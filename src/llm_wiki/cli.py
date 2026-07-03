@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 
 import click
@@ -10,8 +12,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from . import __version__
+from .links import iter_wiki_pages, resolve_page
 from .lint import lint_wiki
-from .paths import find_root, raw_dir, wiki_dir
+from .paths import find_root, wiki_dir
 from .search import search_wiki
 from .stats import get_stats, parse_log
 
@@ -51,8 +54,6 @@ def search(ctx: click.Context, query: str, limit: int, as_json: bool) -> None:
     results = search_wiki(wiki_dir(root), query, limit=limit)
 
     if as_json:
-        import json
-
         payload = [
             {"path": r.page.rel_path, "score": round(r.score, 4), "snippet": r.snippet}
             for r in results
@@ -70,15 +71,26 @@ def search(ctx: click.Context, query: str, limit: int, as_json: bool) -> None:
     table.add_column("Snippet")
 
     for r in results:
-        table.add_row(f"{r.score:.2f}", r.page.rel_path, r.snippet[:120] + "…")
+        snippet = r.snippet
+        if len(snippet) > 120:
+            snippet = snippet[:120] + "…"
+        table.add_row(f"{r.score:.2f}", r.page.rel_path, snippet)
 
     console.print(table)
 
 
 @main.command()
 @click.option("--severity", type=click.Choice(["all", "error", "warning", "info"]), default="all")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
+@click.option(
+    "--fail-on",
+    type=click.Choice(["error", "warning", "none"]),
+    default="error",
+    show_default=True,
+    help="Exit with code 1 when issues at or above this severity are found.",
+)
 @click.pass_context
-def lint(ctx: click.Context, severity: str) -> None:
+def lint(ctx: click.Context, severity: str, as_json: bool, fail_on: str) -> None:
     """Health-check the wiki for broken links, orphans, and index gaps."""
     root: Path = ctx.obj["root"]
     report = lint_wiki(wiki_dir(root))
@@ -87,31 +99,86 @@ def lint(ctx: click.Context, severity: str) -> None:
     if severity != "all":
         issues = [i for i in issues if i.severity == severity]
 
-    if not issues:
+    if as_json:
+        payload = [
+            {
+                "severity": i.severity,
+                "category": i.category,
+                "page": i.page,
+                "message": i.message,
+            }
+            for i in issues
+        ]
+        console.print_json(json.dumps(payload))
+    elif not issues:
         console.print("[green]✓ Wiki looks healthy — no issues found.[/]")
-        return
+    else:
+        table = Table(title="Lint Report", show_header=True)
+        table.add_column("Severity")
+        table.add_column("Category")
+        table.add_column("Page")
+        table.add_column("Message")
 
-    table = Table(title="Lint Report", show_header=True)
-    table.add_column("Severity")
-    table.add_column("Category")
-    table.add_column("Page")
-    table.add_column("Message")
+        color = {"error": "red", "warning": "yellow", "info": "blue"}
+        for issue in issues:
+            table.add_row(
+                f"[{color[issue.severity]}]{issue.severity}[/]",
+                issue.category,
+                issue.page,
+                issue.message,
+            )
 
-    color = {"error": "red", "warning": "yellow", "info": "blue"}
-    for issue in issues:
-        table.add_row(
-            f"[{color[issue.severity]}]{issue.severity}[/]",
-            issue.category,
-            issue.page,
-            issue.message,
+        console.print(table)
+        console.print(
+            f"\n[bold]{len(report.errors)}[/] errors, "
+            f"[bold]{len(report.warnings)}[/] warnings, "
+            f"[bold]{len(report.infos)}[/] info"
         )
 
-    console.print(table)
-    console.print(
-        f"\n[bold]{len(report.errors)}[/] errors, "
-        f"[bold]{len(report.warnings)}[/] warnings, "
-        f"[bold]{len(issues) - len(report.errors) - len(report.warnings)}[/] info"
-    )
+    if fail_on != "none":
+        thresholds = {"error": 0, "warning": 1, "info": 2}
+        severity_rank = {"error": 0, "warning": 1, "info": 2}
+        cutoff = thresholds[fail_on]
+        failing = [i for i in report.issues if severity_rank[i.severity] <= cutoff]
+        if failing:
+            sys.exit(1)
+
+
+@main.command("list")
+@click.option(
+    "--type",
+    "page_type",
+    type=click.Choice(["entity", "concept", "source", "answer", "all"]),
+    default="all",
+    show_default=True,
+)
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
+@click.pass_context
+def list_pages(ctx: click.Context, page_type: str, as_json: bool) -> None:
+    """List wiki pages (useful for agents exploring the catalog)."""
+    root: Path = ctx.obj["root"]
+    pages = iter_wiki_pages(wiki_dir(root))
+
+    prefix_map = {
+        "entity": "entities/",
+        "concept": "concepts/",
+        "source": "sources/",
+        "answer": "answers/",
+    }
+    if page_type != "all":
+        pages = [p for p in pages if p.rel_path.startswith(prefix_map[page_type])]
+
+    if as_json:
+        payload = [{"path": p.rel_path, "stem": p.stem} for p in pages]
+        console.print_json(json.dumps(payload))
+        return
+
+    if not pages:
+        console.print("[yellow]No pages found.[/]")
+        return
+
+    for page in pages:
+        console.print(page.rel_path)
 
 
 @main.command()
@@ -158,23 +225,14 @@ def expand(ctx: click.Context, page: str) -> None:
     root: Path = ctx.obj["root"]
     wiki_root = wiki_dir(root)
 
-    candidates = [
-        wiki_root / page,
-        wiki_root / f"{page}.md",
-        wiki_root / "entities" / f"{page}.md",
-        wiki_root / "concepts" / f"{page}.md",
-        wiki_root / "sources" / f"{page}.md",
-        wiki_root / "answers" / f"{page}.md",
-    ]
-
-    path = next((p for p in candidates if p.exists()), None)
-    if not path:
+    resolved = resolve_page(wiki_root, page)
+    if not resolved:
         raise click.ClickException(f"Page not found: {page}")
 
-    text = path.read_text(encoding="utf-8")
+    text = resolved.path.read_text(encoding="utf-8")
     headings = [line for line in text.splitlines() if line.startswith("#")]
 
-    console.print(Panel.fit(f"[bold]{path.relative_to(wiki_root)}[/]", title="Wiki Page"))
+    console.print(Panel.fit(f"[bold]{resolved.rel_path}[/]", title="Wiki Page"))
     if headings:
         console.print("[bold]Table of contents[/]")
         for h in headings:
@@ -205,7 +263,9 @@ def init_check(ctx: click.Context) -> None:
         ok = ok and exists
 
     if ok:
-        console.print("\n[green]Project is ready. Open AGENTS.md in your agent and start ingesting.[/]")
+        console.print(
+            "\n[green]Project is ready. Open AGENTS.md in your agent and start ingesting.[/]"
+        )
     else:
         raise click.ClickException("Project structure is incomplete.")
 

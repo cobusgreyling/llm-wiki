@@ -3,7 +3,10 @@
     "llm-wiki": {
       "command": "python",
       "args": ["-m", "llm_wiki.mcp_server"],
-      "cwd": "/absolute/path/to/your/llm-wiki"
+      "cwd": "/absolute/path/to/your/llm-wiki",
+      "env": {
+        "LLM_WIKI_ROOT": "/absolute/path/to/your/llm-wiki"
+      }
     }
   }
 }

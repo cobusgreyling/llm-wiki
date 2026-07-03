@@ -16,6 +16,7 @@ except ImportError as exc:
         "MCP support requires: pip install 'llm-wiki[mcp]'"
     ) from exc
 
+from .links import resolve_page
 from .lint import lint_wiki
 from .paths import find_root, wiki_dir
 from .search import search_wiki
@@ -51,18 +52,12 @@ def wiki_search(query: str, limit: int = 8) -> str:
 def wiki_expand(page: str) -> str:
     """Read a wiki page by name or path. Returns full markdown content."""
     wiki_root = wiki_dir(_root())
-    candidates = [
-        wiki_root / page,
-        wiki_root / f"{page}.md",
-        wiki_root / "entities" / f"{page}.md",
-        wiki_root / "concepts" / f"{page}.md",
-        wiki_root / "sources" / f"{page}.md",
-        wiki_root / "answers" / f"{page}.md",
-    ]
-    path = next((p for p in candidates if p.exists()), None)
-    if not path:
+    resolved = resolve_page(wiki_root, page)
+    if not resolved:
         return json.dumps({"error": f"Page not found: {page}"})
-    return json.dumps({"path": path.relative_to(wiki_root).as_posix(), "content": path.read_text()})
+    return json.dumps(
+        {"path": resolved.rel_path, "content": resolved.path.read_text(encoding="utf-8")}
+    )
 
 
 @mcp.tool()
@@ -99,6 +94,24 @@ def wiki_stats() -> str:
         },
         indent=2,
     )
+
+
+@mcp.tool()
+def wiki_list(page_type: str = "all") -> str:
+    """List wiki pages. page_type: entity, concept, source, answer, or all."""
+    from .links import iter_wiki_pages
+
+    wiki_root = wiki_dir(_root())
+    pages = iter_wiki_pages(wiki_root)
+    prefix_map = {
+        "entity": "entities/",
+        "concept": "concepts/",
+        "source": "sources/",
+        "answer": "answers/",
+    }
+    if page_type != "all":
+        pages = [p for p in pages if p.rel_path.startswith(prefix_map[page_type])]
+    return json.dumps([{"path": p.rel_path, "stem": p.stem} for p in pages], indent=2)
 
 
 @mcp.tool()

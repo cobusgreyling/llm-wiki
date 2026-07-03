@@ -54,6 +54,26 @@ def resolve_link(target: str, slug_index: dict[str, list[WikiPage]]) -> WikiPage
     return matches[0]
 
 
+def resolve_page(wiki_root: Path, page: str) -> WikiPage | None:
+    """Resolve a page name or path to an existing wiki file."""
+    candidates = [
+        wiki_root / page,
+        wiki_root / f"{page}.md",
+        wiki_root / "entities" / f"{page}.md",
+        wiki_root / "concepts" / f"{page}.md",
+        wiki_root / "sources" / f"{page}.md",
+        wiki_root / "answers" / f"{page}.md",
+    ]
+    path = next((p for p in candidates if p.exists()), None)
+    if not path:
+        return None
+    return WikiPage(
+        path=path,
+        rel_path=path.relative_to(wiki_root).as_posix(),
+        stem=path.stem,
+    )
+
+
 def inbound_links(pages: list[WikiPage]) -> dict[str, set[str]]:
     """Map page rel_path -> set of pages that link to it."""
     slug_index = build_slug_index(pages)

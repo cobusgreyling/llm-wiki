@@ -1,5 +1,7 @@
 # LLM Wiki
 
+[![CI](https://github.com/cobusgreyling/llm-wiki/actions/workflows/ci.yml/badge.svg)](https://github.com/cobusgreyling/llm-wiki/actions/workflows/ci.yml)
+
 ![LLM Wiki — A pattern for a knowledge base that builds and maintains itself](assets/header.jpg)
 
 A **reference implementation** of [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — a compounding personal knowledge base where the LLM maintains structured, interlinked markdown instead of re-deriving everything from raw chunks on every question.
@@ -77,11 +79,15 @@ llm-wiki/
 
 ```bash
 wiki search "transformer architecture"   # BM25 search
-wiki lint                                # health check
+wiki list --type concept                 # browse pages by type
+wiki lint                                # health check (exits 1 on errors)
+wiki lint --json                         # machine-readable lint output
 wiki stats                               # page counts
 wiki log                                 # recent operations
 wiki expand synthesis                    # read a page + TOC
 ```
+
+Set `LLM_WIKI_ROOT` when running the MCP server or CLI from outside the project directory.
 
 ## MCP server
 
@@ -103,7 +109,7 @@ pip install -e ".[mcp]"
 }
 ```
 
-Tools: `wiki_search`, `wiki_expand`, `wiki_lint`, `wiki_stats`, `wiki_recent_log`
+Tools: `wiki_search`, `wiki_expand`, `wiki_list`, `wiki_lint`, `wiki_stats`, `wiki_recent_log`
 
 ## Example use cases
 

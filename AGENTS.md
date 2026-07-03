@@ -144,12 +144,16 @@ Every page should link to at least:
 
 ```bash
 wiki search "query"       # BM25 search over wiki/
-wiki lint                 # health check
+wiki list --type concept  # browse pages by type
+wiki lint                 # health check (exits 1 on errors)
+wiki lint --json          # machine-readable lint output
 wiki stats                # page counts
 wiki log                  # recent operations
 wiki expand <page>        # read a page + TOC
 wiki init-check           # verify project structure
 ```
+
+Set `LLM_WIKI_ROOT` to the project root when the CLI or MCP server runs outside this directory.
 
 Install: `pip install -e .` from the project root.
 

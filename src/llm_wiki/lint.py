@@ -6,7 +6,11 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 from .links import (
+    WIKILINK_RE,
+    WikiPage,
     build_slug_index,
     extract_wikilinks,
     inbound_links,
@@ -15,8 +19,12 @@ from .links import (
 )
 
 CONTRADICTION_MARKERS = re.compile(
-    r"(?i)(contradict|conflict|disagree|supersede|outdated|stale|deprecated)"
+    r"(?i)\b(contradict(?:s|ed|ion)?|conflict(?:s|ed|ing)?|disagree(?:s|d)?|"
+    r"supersede(?:s|d)?|outdated|stale|deprecated)\b"
 )
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+VALID_TYPES = {"entity", "concept", "source", "answer", "synthesis", "meta"}
+FRONTMATTER_EXEMPT = {"index", "log"}
 
 
 @dataclass
@@ -39,6 +47,63 @@ class LintReport:
     def warnings(self) -> list[LintIssue]:
         return [i for i in self.issues if i.severity == "warning"]
 
+    @property
+    def infos(self) -> list[LintIssue]:
+        return [i for i in self.issues if i.severity == "info"]
+
+
+def parse_frontmatter(text: str) -> dict | None:
+    match = FRONTMATTER_RE.match(text)
+    if not match:
+        return None
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def lint_frontmatter(page: WikiPage, text: str, report: LintReport) -> None:
+    if page.stem in FRONTMATTER_EXEMPT:
+        return
+
+    meta = parse_frontmatter(text)
+    if meta is None:
+        report.issues.append(
+            LintIssue(
+                "warning",
+                "frontmatter",
+                page.rel_path,
+                "Missing or invalid YAML frontmatter",
+            )
+        )
+        return
+
+    page_type = meta.get("type")
+    if not page_type:
+        report.issues.append(
+            LintIssue("warning", "frontmatter", page.rel_path, "Frontmatter missing `type` field")
+        )
+    elif page_type not in VALID_TYPES:
+        report.issues.append(
+            LintIssue(
+                "warning",
+                "frontmatter",
+                page.rel_path,
+                f"Unknown frontmatter type: {page_type!r}",
+            )
+        )
+
+    if not meta.get("updated"):
+        report.issues.append(
+            LintIssue("warning", "frontmatter", page.rel_path, "Frontmatter missing `updated` date")
+        )
+
+    if page_type in {"entity", "concept", "source", "answer"} and not meta.get("created"):
+        report.issues.append(
+            LintIssue("warning", "frontmatter", page.rel_path, "Frontmatter missing `created` date")
+        )
+
 
 def lint_wiki(wiki_root: Path) -> LintReport:
     report = LintReport()
@@ -57,6 +122,8 @@ def lint_wiki(wiki_root: Path) -> LintReport:
     for page in pages:
         text = page.path.read_text(encoding="utf-8", errors="replace")
         links = extract_wikilinks(text)
+
+        lint_frontmatter(page, text, report)
 
         # Broken wikilinks
         for target in links:
@@ -95,13 +162,15 @@ def lint_wiki(wiki_root: Path) -> LintReport:
                 )
 
         # Stale / contradiction language without contradictions ledger update
-        if CONTRADICTION_MARKERS.search(text) and page.stem != "contradictions":
+        prose = WIKILINK_RE.sub(" ", text)
+        if CONTRADICTION_MARKERS.search(prose) and page.stem not in ("contradictions", "index"):
             report.issues.append(
                 LintIssue(
                     "info",
                     "contradiction-hint",
                     page.rel_path,
-                    "Contains contradiction/staleness language — verify contradictions.md is updated",
+                    "Contains contradiction/staleness language — "
+                    "verify contradictions.md is updated",
                 )
             )
 

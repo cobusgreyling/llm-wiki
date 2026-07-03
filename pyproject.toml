@@ -40,6 +40,12 @@ Repository = "https://github.com/cobusgreyling/llm-wiki"
 [tool.hatch.build.targets.wheel]
 packages = ["src/llm_wiki"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
