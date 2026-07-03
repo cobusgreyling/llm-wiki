@@ -153,7 +153,16 @@ pip install llm-wiki          # CLI tools
 pip install "llm-wiki[mcp]"   # CLI + MCP server
 ```
 
-Releases are published automatically when a [GitHub Release](https://github.com/cobusgreyling/llm-wiki/releases) is published. To enable publishing, configure [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) for this repository with the `pypi` GitHub environment.
+Releases are published automatically when a [GitHub Release](https://github.com/cobusgreyling/llm-wiki/releases) is published.
+
+**One-time PyPI setup** (required before the publish workflow succeeds):
+
+1. Create the `llm-wiki` project on [pypi.org](https://pypi.org) (name is available).
+2. Add a [trusted publisher](https://docs.pypi.org/trusted-publishers/):
+   - PyPI project → Publishing → Add trusted publisher
+   - Owner: `cobusgreyling`, repo: `llm-wiki`, workflow: `publish.yml`, environment: `pypi`
+3. In GitHub → repo **Settings → Environments**, create environment `pypi` (no secrets needed).
+4. Re-run the [Publish workflow](https://github.com/cobusgreyling/llm-wiki/actions/workflows/publish.yml) from the `v0.2.0` release, or publish a patch release.
 
 ## Contributing
 
