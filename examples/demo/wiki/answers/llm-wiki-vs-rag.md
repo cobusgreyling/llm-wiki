@@ -1,6 +1,7 @@
 ---
 type: answer
 created: 2026-07-03
+updated: 2026-07-03
 query: "How is LLM Wiki different from RAG?"
 sources_consulted: ["sources/karpathy-llm-wiki-gist"]
 tags: [comparison]

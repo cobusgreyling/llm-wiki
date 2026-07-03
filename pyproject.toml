@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-wiki"
-version = "0.2.0"
+version = "0.2.1"
 description = "A compounding knowledge base maintained by LLM agents — inspired by Andrej Karpathy's LLM Wiki pattern."
 readme = "README.md"
 license = "MIT"

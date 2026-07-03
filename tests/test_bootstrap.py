@@ -15,7 +15,14 @@ def test_bootstrap_creates_project_structure(tmp_path: Path):
     assert (target / "wiki" / "log.md").exists()
     assert (target / "templates" / "entity.md").exists()
     assert (target / "raw" / "README.md").exists()
+    assert (target / ".cursor" / "mcp.json").exists()
+    assert (target / ".mcp.json").exists()
+    assert (target / "CLAUDE.md").exists()
     assert "Scaffolded test-wiki" in (target / "wiki" / "log.md").read_text()
+
+    mcp_config = (target / ".cursor" / "mcp.json").read_text()
+    assert str(target.resolve()) in mcp_config
+    assert "{{project_root}}" not in mcp_config
 
 
 def test_bootstrap_refuses_nonempty_dir_without_force(tmp_path: Path):

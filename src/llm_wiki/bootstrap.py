@@ -48,10 +48,16 @@ def _iter_scaffold_files() -> list[tuple[Path, str]]:
     return files
 
 
-def _render_content(content: str, project_name: str, today: str) -> str:
+def _render_content(
+    content: str,
+    project_name: str,
+    today: str,
+    project_root: str,
+) -> str:
     return (
         content.replace("{{date}}", today)
         .replace("{{project_name}}", project_name)
+        .replace("{{project_root}}", project_root)
         .replace("Repository scaffold", f"Scaffolded {project_name}")
     )
 
@@ -73,6 +79,7 @@ def bootstrap_wiki(
 
     target.mkdir(parents=True, exist_ok=True)
     today = date.today().isoformat()
+    project_root = str(target)
     created: list[str] = []
 
     for src_path, rel in _iter_scaffold_files():
@@ -83,13 +90,11 @@ def bootstrap_wiki(
         dest.parent.mkdir(parents=True, exist_ok=True)
         content = src_path.read_text(encoding="utf-8")
 
-        if rel == "wiki/log.md":
-            content = _render_content(content, project_name, today)
-            if f"## [{today}] init |" not in content:
-                content = content.rstrip() + f"\n\n## [{today}] init | Scaffolded {project_name}\n"
+        if "{{project_root}}" in content or "{{date}}" in content or "{{project_name}}" in content:
+            content = _render_content(content, project_name, today, project_root)
 
-        if rel.endswith(".md") and "{{date}}" in content:
-            content = _render_content(content, project_name, today)
+        if rel == "wiki/log.md" and f"## [{today}] init |" not in content:
+            content = content.rstrip() + f"\n\n## [{today}] init | Scaffolded {project_name}\n"
 
         dest.write_text(content, encoding="utf-8")
         created.append(rel)

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "llm-wiki": {
+      "command": "python",
+      "args": ["-m", "llm_wiki.mcp_server"],
+      "cwd": "{{project_root}}",
+      "env": {
+        "LLM_WIKI_ROOT": "{{project_root}}"
+      }
+    }
+  }
+}

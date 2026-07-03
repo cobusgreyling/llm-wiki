@@ -9,6 +9,6 @@ grep "ingest" log.md              # all ingests
 
 ---
 
-## [2026-07-03] init | Repository scaffold
+## [{{date}}] init | Scaffolded {{project_name}}
 
 Initialized llm-wiki from the Karpathy pattern. Wiki is ready for first source ingest.

@@ -1,6 +1,8 @@
 # LLM Wiki
 
 [![CI](https://github.com/cobusgreyling/llm-wiki/actions/workflows/ci.yml/badge.svg)](https://github.com/cobusgreyling/llm-wiki/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/llm-wiki)](https://pypi.org/project/llm-wiki/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ![LLM Wiki — A pattern for a knowledge base that builds and maintains itself](assets/header.jpg)
 
@@ -14,49 +16,115 @@ Classic RAG retrieves fragments at query time. Nothing accumulates. Ask a questi
 
 **LLM Wiki is different.** When you add a source, the agent reads it, extracts key information, and integrates it into a persistent wiki — updating entity pages, revising synthesis, flagging contradictions. Knowledge is **compiled once and kept current**.
 
+| | RAG | Notes app | LLM Wiki |
+|---|-----|-----------|----------|
+| **Knowledge accumulates** | No — re-retrieve each query | Manual linking | Yes — agent integrates on ingest |
+| **Cross-document synthesis** | Fragment assembly at query time | You connect the dots | Pre-built in synthesis + entity pages |
+| **Citations** | Chunk references | None by default | Wikilinks to source pages |
+| **Agent role** | Retrieve + answer | None | Maintain the wiki (ingest, lint, update) |
+| **Human role** | Curate corpus | Write everything | Curate `raw/` + ask questions |
+
+## See it in action
+
+**Ingest flow** — one source update touches the whole wiki:
+
+![Ingest workflow](assets/ingest-flow.svg)
+
+**Demo graph** — after ingesting Karpathy's gist, one source links to 10+ pages ([`examples/demo/`](examples/demo/)):
+
+![Demo wiki graph](assets/demo-graph.svg)
+
+Open `examples/demo/` as an Obsidian vault to explore the live graph, or run:
+
+```bash
+wiki --root examples/demo search "memex"
+wiki --root examples/demo stats
+```
+
 ## Quick start
 
-### Option A — Scaffold a new wiki (recommended)
+### 1. Install
 
 ```bash
 pip install llm-wiki
+pip install "llm-wiki[mcp]"   # optional: MCP server for agents
+```
+
+Or clone this repo for development:
+
+```bash
+git clone https://github.com/cobusgreyling/llm-wiki.git
+cd llm-wiki
+pip install -e ".[dev,mcp]"
+```
+
+### 2. Scaffold a new wiki
+
+```bash
 wiki init my-wiki --git
 cd my-wiki
 wiki init-check
 ```
 
-Or use the shell wrapper from a clone of this repo:
+This creates agent configs (`.cursor/mcp.json`, `.mcp.json`, `CLAUDE.md`) with paths already set.
+
+Alternative — shell wrapper from a repo clone:
 
 ```bash
 ./scripts/bootstrap.sh my-wiki --git
 ```
 
-### Option B — Clone the template repo
-
-```bash
-git clone https://github.com/cobusgreyling/llm-wiki.git my-wiki
-cd my-wiki
-pip install -e .
-wiki init-check
-```
-
 ### 3. Open in your agent
 
-Point Claude Code, Cursor, Codex, or any agent at this repo. The agent reads **`AGENTS.md`** and becomes your wiki maintainer.
+Point Claude Code, Cursor, Codex, or any agent at the wiki folder. The agent reads **`AGENTS.md`** and becomes your wiki maintainer.
+
+#### Cursor
+
+MCP is pre-configured at `.cursor/mcp.json` after `wiki init`. Reload MCP servers in Cursor settings, then try:
+
+> "Lint the wiki" or "Search the wiki for transformer architecture"
+
+#### Claude Code
+
+`CLAUDE.md` points to `AGENTS.md`. MCP is in `.mcp.json`:
+
+```bash
+cd my-wiki
+claude   # or your Claude Code entrypoint
+```
+
+#### Codex / other agents
+
+Set `LLM_WIKI_ROOT` and run the MCP server manually:
+
+```json
+{
+  "mcpServers": {
+    "llm-wiki": {
+      "command": "python",
+      "args": ["-m", "llm_wiki.mcp_server"],
+      "cwd": "/path/to/my-wiki",
+      "env": { "LLM_WIKI_ROOT": "/path/to/my-wiki" }
+    }
+  }
+}
+```
+
+See [`.github/mcp.json.example`](.github/mcp.json.example) for a copy-paste template.
 
 ### 4. Add a source and ingest
 
 ```bash
-# Drop an article, paper, or notes into raw/
 cp ~/Downloads/some-article.md raw/
-
-# Then tell your agent:
-# "Ingest the new source in raw/"
 ```
+
+Then tell your agent:
+
+> "Ingest the new source in raw/"
 
 ### 5. Browse in Obsidian
 
-Open the repo folder as an Obsidian vault. Watch the graph grow as your agent maintains cross-references in real time.
+Open the wiki folder as an Obsidian vault. Watch the graph grow as your agent maintains cross-references in real time.
 
 ## Architecture
 
@@ -75,6 +143,8 @@ llm-wiki/
 ├── AGENTS.md         # Agent instructions (the schema)
 └── src/llm_wiki/     # CLI + MCP tools
 ```
+
+> **This repo** is the toolkit. The populated example wiki lives in [`examples/demo/`](examples/demo/).
 
 ## Operations
 
@@ -101,25 +171,12 @@ Set `LLM_WIKI_ROOT` when running the MCP server or CLI from outside the project 
 
 ## MCP server
 
-Give your agent native wiki tools:
+Tools: `wiki_search`, `wiki_expand`, `wiki_list`, `wiki_lint`, `wiki_stats`, `wiki_recent_log`
 
 ```bash
-pip install -e ".[mcp]"
+pip install "llm-wiki[mcp]"
+python -m llm_wiki.mcp_server
 ```
-
-```json
-{
-  "mcpServers": {
-    "llm-wiki": {
-      "command": "python",
-      "args": ["-m", "llm_wiki.mcp_server"],
-      "cwd": "/path/to/your/llm-wiki"
-    }
-  }
-}
-```
-
-Tools: `wiki_search`, `wiki_expand`, `wiki_list`, `wiki_lint`, `wiki_stats`, `wiki_recent_log`
 
 ## Example use cases
 
@@ -128,10 +185,6 @@ Tools: `wiki_search`, `wiki_expand`, `wiki_list`, `wiki_lint`, `wiki_stats`, `wi
 - **Business** — meeting transcripts, Slack threads, project docs
 - **Personal** — health, goals, journal entries, podcast notes
 - **Due diligence** — competitive analysis that compounds
-
-## Example wiki
-
-See [`examples/demo/`](examples/demo/) for a starter wiki ingested from Karpathy's original gist, with entity and concept pages already populated.
 
 ## Obsidian tips
 
@@ -146,27 +199,15 @@ See [`examples/demo/`](examples/demo/) for a starter wiki ingested from Karpathy
 - [qmd](https://github.com/tobi/qmd) — local hybrid search when the wiki outgrows the index
 - [trip2g](https://trip2g.com/en/user/llm_wiki) — hosted wiki + MCP federation
 
-## Installing from PyPI
-
-```bash
-pip install llm-wiki          # CLI tools
-pip install "llm-wiki[mcp]"   # CLI + MCP server
-```
-
-Releases are published automatically when a [GitHub Release](https://github.com/cobusgreyling/llm-wiki/releases) is published.
-
-**One-time PyPI setup** (required before the publish workflow succeeds):
-
-1. Create the `llm-wiki` project on [pypi.org](https://pypi.org) (name is available).
-2. Add a [trusted publisher](https://docs.pypi.org/trusted-publishers/):
-   - PyPI project → Publishing → Add trusted publisher
-   - Owner: `cobusgreyling`, repo: `llm-wiki`, workflow: `publish.yml`, environment: `pypi`
-3. In GitHub → repo **Settings → Environments**, create environment `pypi` (no secrets needed).
-4. Re-run the [Publish workflow](https://github.com/cobusgreyling/llm-wiki/actions/workflows/publish.yml) from the `v0.2.0` release, or publish a patch release.
-
 ## Contributing
 
 Fork it, adapt `AGENTS.md` to your domain, and open PRs for tooling improvements. This repo is a **template and toolkit**, not a hosted service.
+
+Maintainers: see [MAINTAINERS.md](MAINTAINERS.md) for release and PyPI publishing.
+
+## Launch
+
+Ready-to-post announcement copy (gist comment, social, HN): [LAUNCH.md](LAUNCH.md).
 
 ## License
 

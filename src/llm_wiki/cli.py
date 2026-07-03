@@ -73,7 +73,7 @@ def init(target: Path, name: str, git: bool, force: bool) -> None:
     console.print(
         "\nNext steps:\n"
         f"  cd {result.target.name}\n"
-        "  pip install llm-wiki   # CLI + MCP tools\n"
+        "  pip install \"llm-wiki[mcp]\"   # CLI + MCP server\n"
         f"  wiki --root . init-check\n"
         "  Open AGENTS.md in your agent and start ingesting."
     )

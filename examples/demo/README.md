@@ -2,6 +2,8 @@
 
 A pre-populated example showing what a wiki looks like after ingesting [Karpathy's LLM Wiki gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
+![Demo wiki graph](../../assets/demo-graph.svg)
+
 Open `examples/demo/wiki/` in Obsidian to explore the graph:
 
 - 2 entity pages (Karpathy, Bush)
