@@ -11,6 +11,10 @@ from pathlib import Path
 from .links import WikiPage, iter_wiki_pages
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
+HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
+
+TITLE_BOOST = 3.0
+HEADING_BOOST = 1.5
 
 
 @dataclass
@@ -22,6 +26,28 @@ class SearchResult:
 
 def tokenize(text: str) -> list[str]:
     return TOKEN_RE.findall(text.lower())
+
+
+def extract_headings(text: str) -> list[str]:
+    return HEADING_RE.findall(text)
+
+
+def build_term_counts(text: str) -> tuple[Counter[str], int]:
+    """Return boosted term counts and body length for BM25 scoring."""
+    body_lines = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+    body_terms = tokenize("\n".join(body_lines))
+    counts = Counter(body_terms)
+    body_len = len(body_terms)
+
+    headings = extract_headings(text)
+    if headings:
+        for term in tokenize(headings[0]):
+            counts[term] += TITLE_BOOST
+        for heading in headings[1:]:
+            for term in tokenize(heading):
+                counts[term] += HEADING_BOOST
+
+    return counts, body_len
 
 
 def bm25_score(
@@ -76,10 +102,11 @@ def search_wiki(
 
     for page in pages:
         text = page.path.read_text(encoding="utf-8", errors="replace")
-        terms = tokenize(text)
-        counts = Counter(terms)
-        corpus.append((page, counts, len(terms), text))
-        for term in set(terms):
+        boosted_counts, body_len = build_term_counts(text)
+        body_lines = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+        body_terms = tokenize("\n".join(body_lines))
+        corpus.append((page, boosted_counts, body_len, text))
+        for term in set(body_terms):
             df[term] += 1
 
     if not corpus:

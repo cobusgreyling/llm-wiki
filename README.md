@@ -16,17 +16,26 @@ Classic RAG retrieves fragments at query time. Nothing accumulates. Ask a questi
 
 ## Quick start
 
-### 1. Use this template
+### Option A — Scaffold a new wiki (recommended)
 
 ```bash
-# Use as a GitHub template, or clone directly:
-git clone https://github.com/cobusgreyling/llm-wiki.git my-wiki
+pip install llm-wiki
+wiki init my-wiki --git
 cd my-wiki
+wiki init-check
 ```
 
-### 2. Install the CLI
+Or use the shell wrapper from a clone of this repo:
 
 ```bash
+./scripts/bootstrap.sh my-wiki --git
+```
+
+### Option B — Clone the template repo
+
+```bash
+git clone https://github.com/cobusgreyling/llm-wiki.git my-wiki
+cd my-wiki
 pip install -e .
 wiki init-check
 ```
@@ -78,7 +87,8 @@ llm-wiki/
 ## CLI
 
 ```bash
-wiki search "transformer architecture"   # BM25 search
+wiki init my-wiki --git                    # scaffold a new project
+wiki search "transformer architecture"   # BM25 search (title/header boosted)
 wiki list --type concept                 # browse pages by type
 wiki lint                                # health check (exits 1 on errors)
 wiki lint --json                         # machine-readable lint output
@@ -135,6 +145,15 @@ See [`examples/demo/`](examples/demo/) for a starter wiki ingested from Karpathy
 - [Karpathy's LLM Wiki gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the original pattern
 - [qmd](https://github.com/tobi/qmd) — local hybrid search when the wiki outgrows the index
 - [trip2g](https://trip2g.com/en/user/llm_wiki) — hosted wiki + MCP federation
+
+## Installing from PyPI
+
+```bash
+pip install llm-wiki          # CLI tools
+pip install "llm-wiki[mcp]"   # CLI + MCP server
+```
+
+Releases are published automatically when a [GitHub Release](https://github.com/cobusgreyling/llm-wiki/releases) is published. To enable publishing, configure [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) for this repository with the `pypi` GitHub environment.
 
 ## Contributing
 

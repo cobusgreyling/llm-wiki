@@ -32,3 +32,12 @@ jobs:
 
       - name: Lint demo wiki (must have zero errors)
         run: wiki --root examples/demo lint --severity error
+
+      - name: Verify package build
+        run: |
+          pip install hatch
+          hatch build
+          pip install dist/llm_wiki-*.whl
+          wiki --version
+          wiki init /tmp/test-wiki --name ci-wiki
+          wiki --root /tmp/test-wiki init-check

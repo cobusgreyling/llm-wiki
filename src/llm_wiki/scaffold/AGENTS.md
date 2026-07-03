@@ -143,8 +143,7 @@ Every page should link to at least:
 ## CLI tools
 
 ```bash
-wiki init <dir> --git     # scaffold a new wiki project
-wiki search "query"       # BM25 search over wiki/ (title/header boosted)
+wiki search "query"       # BM25 search over wiki/
 wiki list --type concept  # browse pages by type
 wiki lint                 # health check (exits 1 on errors)
 wiki lint --json          # machine-readable lint output

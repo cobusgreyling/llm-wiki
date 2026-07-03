@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from . import __version__
+from .bootstrap import bootstrap_wiki
 from .links import iter_wiki_pages, resolve_page
 from .lint import lint_wiki
 from .paths import find_root, wiki_dir
@@ -30,6 +31,18 @@ def _root_option(func):
     )(func)
 
 
+def _get_root(ctx: click.Context) -> Path:
+    root = ctx.obj.get("root")
+    if root is not None:
+        return root
+    try:
+        root = find_root()
+    except FileNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+    ctx.obj["root"] = root
+    return root
+
+
 @click.group()
 @click.version_option(__version__, prog_name="wiki")
 @_root_option
@@ -37,10 +50,33 @@ def _root_option(func):
 def main(ctx: click.Context, root: Path | None) -> None:
     """LLM Wiki toolkit — search, lint, and inspect your compounding knowledge base."""
     ctx.ensure_object(dict)
+    ctx.obj["root"] = root
+
+
+@main.command()
+@click.argument("target", type=click.Path(path_type=Path))
+@click.option("--name", default="my-wiki", show_default=True, help="Project name for the log.")
+@click.option("--git/--no-git", default=False, help="Initialize a git repository.")
+@click.option("--force", is_flag=True, help="Overwrite existing scaffold files.")
+def init(target: Path, name: str, git: bool, force: bool) -> None:
+    """Scaffold a new LLM Wiki project from the bundled template."""
     try:
-        ctx.obj["root"] = root or find_root()
-    except FileNotFoundError as exc:
+        result = bootstrap_wiki(target, project_name=name, init_git=git, force=force)
+    except FileExistsError as exc:
         raise click.ClickException(str(exc)) from exc
+
+    console.print(f"[green]✓[/] Created wiki at [bold]{result.target}[/]")
+    for rel in result.files_created:
+        console.print(f"  [dim]{rel}[/]")
+    if result.git_initialized:
+        console.print("[green]✓[/] Initialized git repository")
+    console.print(
+        "\nNext steps:\n"
+        f"  cd {result.target.name}\n"
+        "  pip install llm-wiki   # CLI + MCP tools\n"
+        f"  wiki --root . init-check\n"
+        "  Open AGENTS.md in your agent and start ingesting."
+    )
 
 
 @main.command()
@@ -50,7 +86,7 @@ def main(ctx: click.Context, root: Path | None) -> None:
 @click.pass_context
 def search(ctx: click.Context, query: str, limit: int, as_json: bool) -> None:
     """Search wiki pages using BM25 ranking."""
-    root: Path = ctx.obj["root"]
+    root = _get_root(ctx)
     results = search_wiki(wiki_dir(root), query, limit=limit)
 
     if as_json:
@@ -92,7 +128,7 @@ def search(ctx: click.Context, query: str, limit: int, as_json: bool) -> None:
 @click.pass_context
 def lint(ctx: click.Context, severity: str, as_json: bool, fail_on: str) -> None:
     """Health-check the wiki for broken links, orphans, and index gaps."""
-    root: Path = ctx.obj["root"]
+    root = _get_root(ctx)
     report = lint_wiki(wiki_dir(root))
 
     issues = report.issues
@@ -156,7 +192,7 @@ def lint(ctx: click.Context, severity: str, as_json: bool, fail_on: str) -> None
 @click.pass_context
 def list_pages(ctx: click.Context, page_type: str, as_json: bool) -> None:
     """List wiki pages (useful for agents exploring the catalog)."""
-    root: Path = ctx.obj["root"]
+    root = _get_root(ctx)
     pages = iter_wiki_pages(wiki_dir(root))
 
     prefix_map = {
@@ -185,7 +221,7 @@ def list_pages(ctx: click.Context, page_type: str, as_json: bool) -> None:
 @click.pass_context
 def stats(ctx: click.Context) -> None:
     """Show wiki statistics."""
-    root: Path = ctx.obj["root"]
+    root = _get_root(ctx)
     s = get_stats(root)
 
     table = Table(title="Wiki Stats", show_header=False)
@@ -206,7 +242,7 @@ def stats(ctx: click.Context) -> None:
 @click.pass_context
 def show_log(ctx: click.Context, limit: int) -> None:
     """Show recent log entries."""
-    root: Path = ctx.obj["root"]
+    root = _get_root(ctx)
     entries = parse_log(wiki_dir(root) / "log.md", limit=limit)
 
     if not entries:
@@ -222,7 +258,7 @@ def show_log(ctx: click.Context, limit: int) -> None:
 @click.pass_context
 def expand(ctx: click.Context, page: str) -> None:
     """Print a wiki page and its table of contents (for agent context windows)."""
-    root: Path = ctx.obj["root"]
+    root = _get_root(ctx)
     wiki_root = wiki_dir(root)
 
     resolved = resolve_page(wiki_root, page)
@@ -241,11 +277,11 @@ def expand(ctx: click.Context, page: str) -> None:
     console.print(text)
 
 
-@main.command()
+@main.command("init-check")
 @click.pass_context
 def init_check(ctx: click.Context) -> None:
     """Verify project structure is ready for agent operations."""
-    root: Path = ctx.obj["root"]
+    root = _get_root(ctx)
     required = [
         root / "AGENTS.md",
         root / "wiki" / "index.md",
