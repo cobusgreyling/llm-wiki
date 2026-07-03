@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Local overrides (keep your personal wiki private if forked)
+# Uncomment if you want raw sources ignored by default:
+# raw/*
+# !raw/README.md
+# !raw/.gitkeep
