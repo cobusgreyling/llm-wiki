@@ -25,8 +25,9 @@ def find_root(start: Path | None = None) -> Path:
         if (candidate / "wiki" / "index.md").exists() and (candidate / "AGENTS.md").exists():
             return candidate
     raise FileNotFoundError(
-        "Could not find llm-wiki root. Run from a project with wiki/index.md and AGENTS.md, "
-        f"or set {ROOT_ENV_VAR}."
+        "Could not find llm-wiki root. Run from a wiki project with wiki/index.md and "
+        f"AGENTS.md, set {ROOT_ENV_VAR}, or pass --root (e.g. wiki --root examples/demo search "
+        f'"query"). From a repo clone, try: make demo-search'
     )
 
 

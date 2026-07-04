@@ -50,7 +50,9 @@ python -m llm_wiki.mcp_server  # should start without import errors
 ## Release checklist
 
 - [ ] Version bumped in `pyproject.toml`
-- [ ] `CHANGELOG` updated (release notes)
+- [ ] `CHANGELOG.md` updated (release notes)
+- [ ] `src/llm_wiki/__init__.py` version matches `pyproject.toml`
+- [ ] `python scripts/sync_agents.py` run if `AGENTS.md` changed
 - [ ] CI green on `main`
 - [ ] GitHub Release created with tag `vX.Y.Z`
 - [ ] Publish workflow succeeded

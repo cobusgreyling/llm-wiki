@@ -10,6 +10,24 @@ A **reference implementation** of [Andrej Karpathy's LLM Wiki pattern](https://g
 
 > *"Obsidian is the IDE; the LLM is the programmer; the wiki is the codebase."*
 
+## Use this template
+
+This repo is a [GitHub template](https://github.com/cobusgreyling/llm-wiki/generate). Click **Use this template** → create your repo → then:
+
+```bash
+pip install llm-wiki
+wiki init my-wiki --git
+cd my-wiki
+wiki init-check
+```
+
+Or install the toolkit only and scaffold locally:
+
+```bash
+pip install llm-wiki
+wiki init my-wiki --git
+```
+
 ## Why not RAG?
 
 Classic RAG retrieves fragments at query time. Nothing accumulates. Ask a question that synthesizes five documents and the LLM rediscovers the pieces every time.
@@ -30,16 +48,25 @@ Classic RAG retrieves fragments at query time. Nothing accumulates. Ask a questi
 
 ![Ingest workflow](assets/ingest-flow.svg)
 
-**Demo graph** — after ingesting Karpathy's gist, one source links to 10+ pages ([`examples/demo/`](examples/demo/)):
+**Demo graph** — two sources link to 15+ pages ([`examples/demo/`](examples/demo/)):
 
 ![Demo wiki graph](assets/demo-graph.svg)
 
-Open `examples/demo/` as an Obsidian vault to explore the live graph, or run:
+### From a repo clone
+
+> **Note:** This repository is the **toolkit**, not a wiki root. Example wikis live under `examples/`. Always pass `--root` or use `make` shortcuts:
 
 ```bash
-wiki --root examples/demo search "memex"
-wiki --root examples/demo stats
+git clone https://github.com/cobusgreyling/llm-wiki.git
+cd llm-wiki
+pip install -e ".[dev,mcp]"
+
+make demo-search          # wiki --root examples/demo search "memex"
+make demo-ingest          # ingest status
+./scripts/demo-walkthrough.sh   # full terminal tour
 ```
+
+Open `examples/demo/` as an Obsidian vault to explore the live graph.
 
 ## Quick start
 
@@ -48,14 +75,6 @@ wiki --root examples/demo stats
 ```bash
 pip install llm-wiki
 pip install "llm-wiki[mcp]"   # optional: MCP server for agents
-```
-
-Or clone this repo for development:
-
-```bash
-git clone https://github.com/cobusgreyling/llm-wiki.git
-cd llm-wiki
-pip install -e ".[dev,mcp]"
 ```
 
 ### 2. Scaffold a new wiki
@@ -67,12 +86,6 @@ wiki init-check
 ```
 
 This creates agent configs (`.cursor/mcp.json`, `.mcp.json`, `CLAUDE.md`) with paths already set.
-
-Alternative — shell wrapper from a repo clone:
-
-```bash
-./scripts/bootstrap.sh my-wiki --git
-```
 
 ### 3. Open in your agent
 
@@ -93,29 +106,11 @@ cd my-wiki
 claude   # or your Claude Code entrypoint
 ```
 
-#### Codex / other agents
-
-Set `LLM_WIKI_ROOT` and run the MCP server manually:
-
-```json
-{
-  "mcpServers": {
-    "llm-wiki": {
-      "command": "python",
-      "args": ["-m", "llm_wiki.mcp_server"],
-      "cwd": "/path/to/my-wiki",
-      "env": { "LLM_WIKI_ROOT": "/path/to/my-wiki" }
-    }
-  }
-}
-```
-
-See [`.github/mcp.json.example`](.github/mcp.json.example) for a copy-paste template.
-
 ### 4. Add a source and ingest
 
 ```bash
 cp ~/Downloads/some-article.md raw/
+wiki ingest-status    # confirm pending raw files
 ```
 
 Then tell your agent:
@@ -129,22 +124,28 @@ Open the wiki folder as an Obsidian vault. Watch the graph grow as your agent ma
 ## Architecture
 
 ```
-llm-wiki/
-├── raw/              # Immutable sources (you curate)
-├── wiki/             # LLM-maintained markdown (agent writes)
-│   ├── index.md      # Content catalog — read first on queries
-│   ├── log.md        # Append-only operation timeline
-│   ├── synthesis.md  # Evolving thesis
-│   ├── entities/     # People, orgs, products…
-│   ├── concepts/     # Ideas, frameworks…
-│   ├── sources/      # Per-document summaries
-│   └── answers/      # Filed query responses
-├── templates/        # Page templates
-├── AGENTS.md         # Agent instructions (the schema)
-└── src/llm_wiki/     # CLI + MCP tools
+my-wiki/                  # your project (from wiki init)
+├── raw/                  # Immutable sources (you curate)
+├── wiki/                 # LLM-maintained markdown (agent writes)
+│   ├── index.md          # Content catalog — read first on queries
+│   ├── log.md            # Append-only operation timeline
+│   ├── synthesis.md      # Evolving thesis
+│   ├── entities/         # People, orgs, products…
+│   ├── concepts/         # Ideas, frameworks…
+│   ├── sources/          # Per-document summaries
+│   └── answers/          # Filed query responses
+├── templates/            # Page templates
+├── AGENTS.md             # Agent instructions (the schema)
+└── (CLI via pip install llm-wiki)
 ```
 
-> **This repo** is the toolkit. The populated example wiki lives in [`examples/demo/`](examples/demo/).
+**This repo** ships the toolkit under `src/llm_wiki/`. Populated examples:
+
+| Example | Domain |
+|---------|--------|
+| [`examples/demo/`](examples/demo/) | Karpathy gist + qmd (with contradiction) |
+| [`examples/research/`](examples/research/) | NLP paper notes |
+| [`examples/reading/`](examples/reading/) | Book chapter notes |
 
 ## Operations
 
@@ -153,25 +154,41 @@ llm-wiki/
 | **Ingest** | You drop a file in `raw/` | Agent creates source page, updates 10–15 linked pages, revises synthesis |
 | **Query** | You ask a question | Agent searches index, reads pages, synthesizes with citations |
 | **Lint** | You or agent, periodically | Broken links, orphans, contradictions, index gaps |
+| **Ingest status** | You or agent, before ingest | Lists raw files missing source pages |
 
 ## CLI
 
 ```bash
 wiki init my-wiki --git                    # scaffold a new project
-wiki search "transformer architecture"   # BM25 search (title/header boosted)
-wiki list --type concept                 # browse pages by type
-wiki lint                                # health check (exits 1 on errors)
-wiki lint --json                         # machine-readable lint output
-wiki stats                               # page counts
-wiki log                                 # recent operations
-wiki expand synthesis                    # read a page + TOC
+wiki ingest-status                         # raw ↔ source coverage
+wiki search "transformer architecture"       # BM25 (default)
+wiki search "auth flow" --backend qmd        # optional: requires qmd collection
+wiki list --type concept                   # browse pages by type
+wiki lint                                  # health check (exits 1 on errors)
+wiki lint --json                           # machine-readable lint output
+wiki stats                                 # page counts
+wiki log                                   # recent operations
+wiki expand synthesis                      # read a page + TOC
 ```
 
 Set `LLM_WIKI_ROOT` when running the MCP server or CLI from outside the project directory.
 
+### Scale: qmd integration
+
+When BM25 search misses paraphrased queries, add [qmd](https://github.com/tobi/qmd) as a retrieval layer:
+
+```bash
+npm install -g @tobilu/qmd
+qmd collection add ./wiki --name wiki
+qmd embed
+wiki search "your query" --backend qmd
+```
+
+The wiki pages remain the source of truth; qmd improves recall.
+
 ## MCP server
 
-Tools: `wiki_search`, `wiki_expand`, `wiki_list`, `wiki_lint`, `wiki_stats`, `wiki_recent_log`
+Tools: `wiki_search`, `wiki_expand`, `wiki_list`, `wiki_lint`, `wiki_stats`, `wiki_ingest_status`, `wiki_recent_log`
 
 ```bash
 pip install "llm-wiki[mcp]"
@@ -180,8 +197,8 @@ python -m llm_wiki.mcp_server
 
 ## Example use cases
 
-- **Research** — papers and articles over weeks, building an evolving thesis
-- **Reading** — chapter-by-chapter book notes with character/theme pages
+- **Research** — papers and articles over weeks, building an evolving thesis → see [`examples/research/`](examples/research/)
+- **Reading** — chapter-by-chapter book notes with character/theme pages → see [`examples/reading/`](examples/reading/)
 - **Business** — meeting transcripts, Slack threads, project docs
 - **Personal** — health, goals, journal entries, podcast notes
 - **Due diligence** — competitive analysis that compounds
@@ -201,13 +218,15 @@ python -m llm_wiki.mcp_server
 
 ## Contributing
 
-Fork it, adapt `AGENTS.md` to your domain, and open PRs for tooling improvements. This repo is a **template and toolkit**, not a hosted service.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues welcome — check the issue templates.
 
 Maintainers: see [MAINTAINERS.md](MAINTAINERS.md) for release and PyPI publishing.
 
 ## Launch
 
 Ready-to-post announcement copy (gist comment, social, HN): [LAUNCH.md](LAUNCH.md).
+
+Record a terminal demo: [docs/DEMO.md](docs/DEMO.md).
 
 ## License
 

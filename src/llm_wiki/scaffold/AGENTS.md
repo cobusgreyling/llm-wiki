@@ -143,14 +143,17 @@ Every page should link to at least:
 ## CLI tools
 
 ```bash
-wiki search "query"       # BM25 search over wiki/
-wiki list --type concept  # browse pages by type
-wiki lint                 # health check (exits 1 on errors)
-wiki lint --json          # machine-readable lint output
-wiki stats                # page counts
-wiki log                  # recent operations
-wiki expand <page>        # read a page + TOC
-wiki init-check           # verify project structure
+wiki init <dir> --git          # scaffold a new wiki project
+wiki ingest-status             # raw files missing source pages (and orphans)
+wiki search "query"            # BM25 search (default; title/header boosted)
+wiki search "query" --backend qmd   # optional: qmd when collection is configured
+wiki list --type concept       # browse pages by type
+wiki lint                      # health check (exits 1 on errors)
+wiki lint --json               # machine-readable lint output
+wiki stats                     # page counts
+wiki log                       # recent operations
+wiki expand <page>             # read a page + TOC
+wiki init-check                # verify project structure
 ```
 
 Set `LLM_WIKI_ROOT` to the project root when the CLI or MCP server runs outside this directory.

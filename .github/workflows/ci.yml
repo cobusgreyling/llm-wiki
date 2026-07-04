@@ -22,7 +22,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package and dev dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,mcp]"
+
+      - name: Verify AGENTS.md sync
+        run: python scripts/sync_agents.py && git diff --exit-code
 
       - name: Ruff
         run: ruff check src tests
@@ -30,8 +33,14 @@ jobs:
       - name: Pytest
         run: pytest -v
 
-      - name: Lint demo wiki (must have zero errors)
-        run: wiki --root examples/demo lint --severity error
+      - name: Lint example wikis (must have zero errors)
+        run: |
+          wiki --root examples/demo lint --severity error
+          wiki --root examples/research lint --severity error
+          wiki --root examples/reading lint --severity error
+
+      - name: Demo walkthrough script
+        run: chmod +x scripts/demo-walkthrough.sh && ./scripts/demo-walkthrough.sh
 
       - name: Verify package build
         run: |

@@ -16,6 +16,10 @@ Knowledge that **accumulates over time** in a structured artifact (the wiki) rat
 
 Subtle questions requiring synthesis across five documents fail in [[concepts/rag|RAG]] because the system must find and piece together fragments each time. A maintained wiki already has cross-references, flagged contradictions, and an evolving synthesis.
 
+## At scale
+
+When the wiki grows, add hybrid retrieval via [[concepts/hybrid-search]] — the structured pages remain the source of truth.
+
 ## Connections
 
 - Contrasts with: [[concepts/rag]]

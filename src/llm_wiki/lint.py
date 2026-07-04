@@ -17,6 +17,7 @@ from .links import (
     iter_wiki_pages,
     resolve_link,
 )
+from .paths import raw_dir
 
 CONTRADICTION_MARKERS = re.compile(
     r"(?i)\b(contradict(?:s|ed|ion)?|conflict(?:s|ed|ing)?|disagree(?:s|d)?|"
@@ -105,12 +106,78 @@ def lint_frontmatter(page: WikiPage, text: str, report: LintReport) -> None:
         )
 
 
-def lint_wiki(wiki_root: Path) -> LintReport:
+def lint_ambiguous_slugs(slug_index: dict[str, list[WikiPage]], report: LintReport) -> None:
+    for slug, matches in slug_index.items():
+        unique = {p.rel_path for p in matches}
+        if len(unique) > 1:
+            report.issues.append(
+                LintIssue(
+                    "warning",
+                    "ambiguous-slug",
+                    ", ".join(sorted(unique)),
+                    f"Slug {slug!r} resolves to multiple pages — wikilinks may be ambiguous",
+                )
+            )
+
+
+def lint_raw_source_coverage(
+    wiki_root: Path,
+    project_root: Path | None,
+    report: LintReport,
+) -> None:
+    if project_root is None:
+        return
+
+    raw_root = raw_dir(project_root)
+    if not raw_root.exists():
+        return
+
+    raw_files = {
+        p.relative_to(raw_root).as_posix()
+        for p in raw_root.rglob("*")
+        if p.is_file() and p.name.lower() not in {".gitkeep", "readme.md"}
+    }
+
+    referenced_raw: set[str] = set()
+    for page in iter_wiki_pages(wiki_root):
+        if not page.rel_path.startswith("sources/"):
+            continue
+        text = page.path.read_text(encoding="utf-8", errors="replace")
+        meta = parse_frontmatter(text)
+        raw_file = meta.get("raw_file") if meta else None
+        if raw_file:
+            referenced_raw.add(str(raw_file))
+            if str(raw_file) not in raw_files:
+                report.issues.append(
+                    LintIssue(
+                        "warning",
+                        "raw-missing",
+                        page.rel_path,
+                        f"Source references missing raw file: {raw_file}",
+                    )
+                )
+
+    for raw_file in sorted(raw_files):
+        if raw_file not in referenced_raw:
+            report.issues.append(
+                LintIssue(
+                    "warning",
+                    "raw-uningested",
+                    f"raw/{raw_file}",
+                    "Raw file has no matching source page (check raw_file frontmatter)",
+                )
+            )
+
+
+def lint_wiki(wiki_root: Path, *, project_root: Path | None = None) -> LintReport:
     report = LintReport()
     pages = iter_wiki_pages(wiki_root)
     slug_index = build_slug_index(pages)
     inbound = inbound_links(pages)
     all_stems = {p.stem.lower() for p in pages}
+    mentioned_terms: dict[str, set[str]] = {}
+
+    lint_ambiguous_slugs(slug_index, report)
 
     # Required files
     for required in ("index.md", "log.md", "synthesis.md"):
@@ -148,18 +215,12 @@ def lint_wiki(wiki_root: Path) -> LintReport:
                 )
             )
 
-        # Concepts mentioned in prose but missing dedicated pages (heuristic)
+        # Concepts mentioned in prose but missing dedicated pages (heuristic, deduped)
         mentioned = re.findall(r"`([a-z][a-z0-9-]{2,})`", text.lower())
         for term in mentioned:
-            if term not in all_stems and term not in ("raw", "wiki", "agents"):
-                report.issues.append(
-                    LintIssue(
-                        "info",
-                        "missing-page",
-                        page.rel_path,
-                        f"Term `{term}` may deserve its own page",
-                    )
-                )
+            if term in all_stems or term in ("raw", "wiki", "agents"):
+                continue
+            mentioned_terms.setdefault(term, set()).add(page.rel_path)
 
         # Stale / contradiction language without contradictions ledger update
         prose = WIKILINK_RE.sub(" ", text)
@@ -173,6 +234,20 @@ def lint_wiki(wiki_root: Path) -> LintReport:
                     "verify contradictions.md is updated",
                 )
             )
+
+    for term, pages_with_term in sorted(mentioned_terms.items()):
+        if len(pages_with_term) < 2:
+            continue
+        report.issues.append(
+            LintIssue(
+                "info",
+                "missing-page",
+                ", ".join(sorted(pages_with_term)),
+                f"Term `{term}` appears on multiple pages but has no dedicated page",
+            )
+        )
+
+    lint_raw_source_coverage(wiki_root, project_root, report)
 
     # Index coverage: pages not listed in index.md
     index_path = wiki_root / "index.md"

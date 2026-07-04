@@ -13,10 +13,11 @@ from rich.table import Table
 
 from . import __version__
 from .bootstrap import bootstrap_wiki
+from .ingest import get_ingest_status
 from .links import iter_wiki_pages, resolve_page
 from .lint import lint_wiki
 from .paths import find_root, wiki_dir
-from .search import search_wiki
+from .search import search_wiki_with_backend
 from .stats import get_stats, parse_log
 
 console = Console()
@@ -82,12 +83,22 @@ def init(target: Path, name: str, git: bool, force: bool) -> None:
 @main.command()
 @click.argument("query")
 @click.option("--limit", "-n", default=10, show_default=True)
+@click.option(
+    "--backend",
+    type=click.Choice(["bm25", "qmd"]),
+    default="bm25",
+    show_default=True,
+    help="Search backend: built-in BM25 or external qmd (requires qmd collection).",
+)
 @click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
 @click.pass_context
-def search(ctx: click.Context, query: str, limit: int, as_json: bool) -> None:
-    """Search wiki pages using BM25 ranking."""
+def search(ctx: click.Context, query: str, limit: int, backend: str, as_json: bool) -> None:
+    """Search wiki pages using BM25 ranking (or qmd when configured)."""
     root = _get_root(ctx)
-    results = search_wiki(wiki_dir(root), query, limit=limit)
+    try:
+        results = search_wiki_with_backend(wiki_dir(root), query, limit=limit, backend=backend)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
     if as_json:
         payload = [
@@ -129,7 +140,7 @@ def search(ctx: click.Context, query: str, limit: int, as_json: bool) -> None:
 def lint(ctx: click.Context, severity: str, as_json: bool, fail_on: str) -> None:
     """Health-check the wiki for broken links, orphans, and index gaps."""
     root = _get_root(ctx)
-    report = lint_wiki(wiki_dir(root))
+    report = lint_wiki(wiki_dir(root), project_root=root)
 
     issues = report.issues
     if severity != "all":
@@ -275,6 +286,45 @@ def expand(ctx: click.Context, page: str) -> None:
             console.print(f"  {h}")
         console.print()
     console.print(text)
+
+
+@main.command("ingest-status")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
+@click.pass_context
+def ingest_status(ctx: click.Context, as_json: bool) -> None:
+    """List raw files and whether they have matching wiki source pages."""
+    root = _get_root(ctx)
+    statuses = get_ingest_status(root)
+
+    if as_json:
+        payload = [
+            {
+                "raw_file": s.raw_file,
+                "source_page": s.source_page,
+                "status": s.status,
+            }
+            for s in statuses
+        ]
+        console.print_json(json.dumps(payload))
+        return
+
+    if not statuses:
+        console.print("[yellow]No raw files or source pages found.[/]")
+        return
+
+    table = Table(title="Ingest Status", show_header=True)
+    table.add_column("Status")
+    table.add_column("Raw file")
+    table.add_column("Source page")
+
+    color = {"ingested": "green", "pending": "yellow", "orphan": "red"}
+    for item in statuses:
+        table.add_row(
+            f"[{color[item.status]}]{item.status}[/]",
+            item.raw_file,
+            item.source_page or "—",
+        )
+    console.print(table)
 
 
 @main.command("init-check")

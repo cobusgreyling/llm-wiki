@@ -1,20 +1,27 @@
-# Demo Wiki
+# Demo wiki
 
-A pre-populated example showing what a wiki looks like after ingesting [Karpathy's LLM Wiki gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
+Populated example wiki ingested from two sources:
 
-![Demo wiki graph](../../assets/demo-graph.svg)
+1. **Karpathy LLM Wiki gist** — the original pattern
+2. **qmd hybrid search** — scale retrieval layer (with open contradiction in `wiki/contradictions.md`)
 
-Open `examples/demo/wiki/` in Obsidian to explore the graph:
-
-- 2 entity pages (Karpathy, Bush)
-- 5 concept pages (compounding knowledge, RAG, Memex, ingest, lint)
-- 1 source summary
-- 1 filed answer (LLM Wiki vs RAG)
-- 1 synthesis page
-
-To lint the demo from the repo root:
+## Explore
 
 ```bash
-wiki --root examples/demo lint
 wiki --root examples/demo search "memex"
+wiki --root examples/demo ingest-status
+wiki --root examples/demo lint
+make demo-search   # from repo root
 ```
+
+Open this folder as an Obsidian vault to view the graph.
+
+## Pages
+
+| Type | Count | Highlights |
+|------|-------|------------|
+| Sources | 2 | karpathy-llm-wiki-gist, qmd-hybrid-search |
+| Entities | 3 | Karpathy, Bush, Tobi Lutke |
+| Concepts | 6 | compounding-knowledge, rag, memex, hybrid-search, wiki-ingest, wiki-lint |
+| Answers | 1 | llm-wiki-vs-rag |
+| Meta | 2 | synthesis (revised thesis), contradictions (open row) |

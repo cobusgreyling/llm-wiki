@@ -1,9 +1,12 @@
-"""Simple hybrid search over wiki markdown files."""
+"""BM25 lexical search over wiki markdown files, with optional qmd backend."""
 
 from __future__ import annotations
 
+import json
 import math
 import re
+import shutil
+import subprocess
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -125,3 +128,86 @@ def search_wiki(
 
     results.sort(key=lambda r: r.score, reverse=True)
     return results[:limit]
+
+
+def search_wiki_qmd(
+    wiki_root: Path,
+    query: str,
+    limit: int = 10,
+) -> list[SearchResult]:
+    """Search via qmd CLI when installed and configured for the wiki directory."""
+    if not shutil.which("qmd"):
+        raise FileNotFoundError(
+            "qmd not found. Install with: npm install -g @tobilu/qmd "
+            "Then: qmd collection add <wiki-root> --name wiki"
+        )
+
+    project_root = wiki_root.parent
+    proc = subprocess.run(
+        [
+            "qmd",
+            "search",
+            query,
+            "--json",
+            "--full-path",
+            "-n",
+            str(limit),
+            "-c",
+            "wiki",
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip() or proc.stdout.strip()
+        raise RuntimeError(
+            f"qmd search failed (exit {proc.returncode}). "
+            f"Configure a collection first: qmd collection add {wiki_root} --name wiki. "
+            f"Details: {stderr}"
+        )
+
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"qmd returned non-JSON output: {proc.stdout[:200]}") from exc
+
+    results: list[SearchResult] = []
+    items = payload if isinstance(payload, list) else payload.get("results", [])
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        file_path = item.get("path") or item.get("file") or item.get("uri", "")
+        path = Path(str(file_path))
+        if not path.is_absolute():
+            path = (project_root / path).resolve()
+        try:
+            page = WikiPage(
+                path=path,
+                rel_path=path.relative_to(wiki_root).as_posix(),
+                stem=path.stem,
+            )
+        except ValueError:
+            continue
+        score = float(item.get("score", item.get("relevance", limit - idx)))
+        snippet = str(item.get("snippet", item.get("content", "")))[:160]
+        results.append(SearchResult(page=page, score=score, snippet=snippet))
+
+    return results[:limit]
+
+
+def search_wiki_with_backend(
+    wiki_root: Path,
+    query: str,
+    *,
+    limit: int = 10,
+    backend: str = "bm25",
+    include_index: bool = True,
+) -> list[SearchResult]:
+    if backend == "bm25":
+        return search_wiki(wiki_root, query, limit=limit, include_index=include_index)
+    if backend == "qmd":
+        return search_wiki_qmd(wiki_root, query, limit=limit)
+    raise ValueError(f"Unknown search backend: {backend!r}")
