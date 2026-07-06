@@ -43,15 +43,49 @@ def extract_wikilinks(text: str) -> set[str]:
     return {m.group(1).strip() for m in WIKILINK_RE.finditer(text)}
 
 
-def resolve_link(target: str, slug_index: dict[str, list[WikiPage]]) -> WikiPage | None:
+def extract_markdown_links(text: str) -> set[str]:
+    return {m.group(1).strip() for m in MARKDOWN_LINK_RE.finditer(text)}
+
+
+def _unique_pages(matches: list[WikiPage]) -> list[WikiPage]:
+    seen: set[str] = set()
+    unique: list[WikiPage] = []
+    for page in matches:
+        if page.rel_path not in seen:
+            seen.add(page.rel_path)
+            unique.append(page)
+    return unique
+
+
+def resolve_link_matches(target: str, slug_index: dict[str, list[WikiPage]]) -> list[WikiPage]:
     key = target.strip().lower()
     matches = slug_index.get(key)
     if not matches:
-        # Try path-style: concepts/foo -> concepts/foo.md
         matches = slug_index.get(key.replace(" ", "-"))
     if not matches:
+        return []
+    return _unique_pages(matches)
+
+
+def is_ambiguous_link(target: str, slug_index: dict[str, list[WikiPage]]) -> bool:
+    return len(resolve_link_matches(target, slug_index)) > 1
+
+
+def resolve_link(target: str, slug_index: dict[str, list[WikiPage]]) -> WikiPage | None:
+    matches = resolve_link_matches(target, slug_index)
+    if len(matches) != 1:
         return None
     return matches[0]
+
+
+def _path_within_root(root: Path, candidate: Path) -> Path | None:
+    root_resolved = root.resolve()
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(root_resolved)
+    except ValueError:
+        return None
+    return resolved if resolved.is_file() else None
 
 
 def resolve_page(wiki_root: Path, page: str) -> WikiPage | None:
@@ -64,14 +98,15 @@ def resolve_page(wiki_root: Path, page: str) -> WikiPage | None:
         wiki_root / "sources" / f"{page}.md",
         wiki_root / "answers" / f"{page}.md",
     ]
-    path = next((p for p in candidates if p.exists()), None)
-    if not path:
-        return None
-    return WikiPage(
-        path=path,
-        rel_path=path.relative_to(wiki_root).as_posix(),
-        stem=path.stem,
-    )
+    for candidate in candidates:
+        resolved = _path_within_root(wiki_root, candidate)
+        if resolved:
+            return WikiPage(
+                path=resolved,
+                rel_path=resolved.relative_to(wiki_root.resolve()).as_posix(),
+                stem=resolved.stem,
+            )
+    return None
 
 
 def inbound_links(pages: list[WikiPage]) -> dict[str, set[str]]:
@@ -86,3 +121,42 @@ def inbound_links(pages: list[WikiPage]) -> dict[str, set[str]]:
             if resolved:
                 inbound[resolved.rel_path].add(page.rel_path)
     return inbound
+
+
+def get_backlinks(wiki_root: Path, page: str) -> list[str]:
+    """Return rel_paths of pages that wikilink to *page*."""
+    resolved = resolve_page(wiki_root, page)
+    if not resolved:
+        return []
+    pages = iter_wiki_pages(wiki_root)
+    inbound = inbound_links(pages)
+    return sorted(inbound.get(resolved.rel_path, ()))
+
+
+def export_graph(wiki_root: Path) -> dict[str, list[dict[str, str]]]:
+    """Export wiki link graph as nodes and edges."""
+    pages = iter_wiki_pages(wiki_root)
+    slug_index = build_slug_index(pages)
+    nodes = [{"id": p.rel_path, "stem": p.stem} for p in pages]
+    edges: list[dict[str, str]] = []
+    seen_edges: set[tuple[str, str]] = set()
+
+    for page in pages:
+        text = page.path.read_text(encoding="utf-8", errors="replace")
+        for target in extract_wikilinks(text):
+            resolved = resolve_link(target, slug_index)
+            if not resolved:
+                continue
+            key = (page.rel_path, resolved.rel_path)
+            if key in seen_edges:
+                continue
+            seen_edges.add(key)
+            edges.append(
+                {
+                    "from": page.rel_path,
+                    "to": resolved.rel_path,
+                    "target": target,
+                }
+            )
+
+    return {"nodes": nodes, "edges": edges}

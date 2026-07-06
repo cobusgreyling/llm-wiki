@@ -19,6 +19,7 @@ This repository is the **toolkit**, not a populated wiki. Example wikis live und
 | `examples/demo/` | Main demo (Karpathy gist + qmd) |
 | `examples/research/` | Research / paper notes |
 | `examples/reading/` | Book chapter notes |
+| `examples/business/` | Meeting notes + customer calls |
 
 Always pass `--root` when running CLI commands from the repo clone:
 

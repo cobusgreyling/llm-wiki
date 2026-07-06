@@ -13,6 +13,19 @@ def test_ingest_status_demo_all_ingested():
     assert any(s.status == "ingested" for s in statuses)
 
 
+def test_ingest_status_detects_incomplete_source(tmp_path: Path):
+    (tmp_path / "AGENTS.md").write_text("# Agent")
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "wiki").mkdir()
+    (tmp_path / "wiki" / "sources").mkdir()
+    (tmp_path / "wiki" / "sources" / "no-raw.md").write_text(
+        "---\ntype: source\ncreated: 2026-07-05\nupdated: 2026-07-05\n---\n\n# Source\n"
+    )
+
+    statuses = get_ingest_status(tmp_path)
+    assert any(s.status == "incomplete" for s in statuses)
+
+
 def test_ingest_status_detects_pending(tmp_path: Path):
     (tmp_path / "AGENTS.md").write_text("# Agent")
     (tmp_path / "raw").mkdir()

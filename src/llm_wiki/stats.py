@@ -32,7 +32,11 @@ def get_stats(root: Path) -> WikiStats:
     pages = iter_wiki_pages(wiki_root)
 
     raw_path = raw_dir(root)
-    raw_files = sum(1 for f in raw_path.rglob("*") if f.is_file() and f.name != ".gitkeep")
+    raw_files = sum(
+        1
+        for f in raw_path.rglob("*")
+        if f.is_file() and f.name.lower() not in {".gitkeep", "readme.md"}
+    )
 
     log_entries = 0
     log_path = wiki_root / "log.md"
@@ -56,6 +60,5 @@ def parse_log(log_path: Path, limit: int = 10) -> list[dict[str, str]]:
     text = log_path.read_text(encoding="utf-8")
     entries = LOG_ENTRY_RE.findall(text)
     return [
-        {"date": date, "operation": op, "detail": detail}
-        for date, op, detail in entries[-limit:]
+        {"date": date, "operation": op, "detail": detail} for date, op, detail in entries[-limit:]
     ]

@@ -16,7 +16,7 @@ RAW_SKIP = {".gitkeep", "readme.md"}
 class IngestStatus:
     raw_file: str
     source_page: str | None
-    status: str  # ingested | pending | orphan
+    status: str  # ingested | pending | orphan | incomplete
 
 
 def _list_raw_files(raw_root: Path) -> list[str]:
@@ -32,21 +32,20 @@ def _list_raw_files(raw_root: Path) -> list[str]:
     return files
 
 
-def _source_raw_map(wiki_root: Path) -> dict[str, str]:
+def _source_raw_map(wiki_root: Path) -> tuple[dict[str, str], list[str]]:
     mapping: dict[str, str] = {}
+    incomplete: list[str] = []
     for page in iter_wiki_pages(wiki_root):
         if not page.rel_path.startswith("sources/"):
             continue
         text = page.path.read_text(encoding="utf-8", errors="replace")
         meta = parse_frontmatter(text)
-        raw_file = None
-        if meta:
-            raw_file = meta.get("raw_file")
+        raw_file = meta.get("raw_file") if meta else None
         if not raw_file:
-            # Heuristic: source slug matches raw filename stem
-            raw_file = f"{page.stem}.md"
+            incomplete.append(page.rel_path)
+            continue
         mapping[str(raw_file)] = page.rel_path
-    return mapping
+    return mapping, incomplete
 
 
 def get_ingest_status(root: Path) -> list[IngestStatus]:
@@ -54,7 +53,7 @@ def get_ingest_status(root: Path) -> list[IngestStatus]:
     raw_root = raw_dir(root)
     wiki_root = wiki_dir(root)
     raw_files = _list_raw_files(raw_root)
-    source_map = _source_raw_map(wiki_root)
+    source_map, incomplete_sources = _source_raw_map(wiki_root)
     raw_set = set(raw_files)
 
     statuses: list[IngestStatus] = []
@@ -66,6 +65,15 @@ def get_ingest_status(root: Path) -> list[IngestStatus]:
                 raw_file=raw_file,
                 source_page=source_page,
                 status="ingested" if source_page else "pending",
+            )
+        )
+
+    for source_page in incomplete_sources:
+        statuses.append(
+            IngestStatus(
+                raw_file="—",
+                source_page=source_page,
+                status="incomplete",
             )
         )
 

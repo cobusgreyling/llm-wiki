@@ -13,6 +13,7 @@ TARGETS = [
     ROOT / "examples" / "demo" / "AGENTS.md",
     ROOT / "examples" / "research" / "AGENTS.md",
     ROOT / "examples" / "reading" / "AGENTS.md",
+    ROOT / "examples" / "business" / "AGENTS.md",
 ]
 
 

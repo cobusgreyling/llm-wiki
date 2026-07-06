@@ -13,12 +13,15 @@ from rich.table import Table
 
 from . import __version__
 from .bootstrap import bootstrap_wiki
+from .expand import extract_section, list_headings
 from .ingest import get_ingest_status
-from .links import iter_wiki_pages, resolve_page
-from .lint import lint_wiki
+from .links import export_graph, get_backlinks, iter_wiki_pages, resolve_page
+from .lint import filter_issues, lint_wiki
+from .new_page import create_page
 from .paths import find_root, wiki_dir
 from .search import search_wiki_with_backend
 from .stats import get_stats, parse_log
+from .watch import watch_raw
 
 console = Console()
 
@@ -74,7 +77,7 @@ def init(target: Path, name: str, git: bool, force: bool) -> None:
     console.print(
         "\nNext steps:\n"
         f"  cd {result.target.name}\n"
-        "  pip install \"llm-wiki[mcp]\"   # CLI + MCP server\n"
+        '  pip install "llm-wiki[mcp]"   # CLI + MCP server\n'
         f"  wiki --root . init-check\n"
         "  Open AGENTS.md in your agent and start ingesting."
     )
@@ -128,6 +131,7 @@ def search(ctx: click.Context, query: str, limit: int, backend: str, as_json: bo
 
 @main.command()
 @click.option("--severity", type=click.Choice(["all", "error", "warning", "info"]), default="all")
+@click.option("--category", default=None, help="Filter by lint category (e.g. broken-link).")
 @click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
 @click.option(
     "--fail-on",
@@ -137,14 +141,18 @@ def search(ctx: click.Context, query: str, limit: int, backend: str, as_json: bo
     help="Exit with code 1 when issues at or above this severity are found.",
 )
 @click.pass_context
-def lint(ctx: click.Context, severity: str, as_json: bool, fail_on: str) -> None:
+def lint(
+    ctx: click.Context,
+    severity: str,
+    category: str | None,
+    as_json: bool,
+    fail_on: str,
+) -> None:
     """Health-check the wiki for broken links, orphans, and index gaps."""
     root = _get_root(ctx)
     report = lint_wiki(wiki_dir(root), project_root=root)
 
-    issues = report.issues
-    if severity != "all":
-        issues = [i for i in issues if i.severity == severity]
+    issues = filter_issues(report.issues, severity=severity, category=category)
 
     if as_json:
         payload = [
@@ -266,8 +274,15 @@ def show_log(ctx: click.Context, limit: int) -> None:
 
 @main.command()
 @click.argument("page")
+@click.option(
+    "--section",
+    "-s",
+    default=None,
+    help="Return only the body under this heading (case-insensitive partial match).",
+)
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
 @click.pass_context
-def expand(ctx: click.Context, page: str) -> None:
+def expand(ctx: click.Context, page: str, section: str | None, as_json: bool) -> None:
     """Print a wiki page and its table of contents (for agent context windows)."""
     root = _get_root(ctx)
     wiki_root = wiki_dir(root)
@@ -277,13 +292,54 @@ def expand(ctx: click.Context, page: str) -> None:
         raise click.ClickException(f"Page not found: {page}")
 
     text = resolved.path.read_text(encoding="utf-8")
-    headings = [line for line in text.splitlines() if line.startswith("#")]
+    heading_list = list_headings(text)
+
+    if section:
+        extracted = extract_section(text, section)
+        if not extracted:
+            available = ", ".join(title for _, title in heading_list) or "(no headings)"
+            raise click.ClickException(
+                f"Section not found: {section!r}. Available headings: {available}"
+            )
+        if as_json:
+            payload = {
+                "path": resolved.rel_path,
+                "section": extracted.heading,
+                "content": extracted.content,
+                "outbound_links": extracted.outbound_links,
+            }
+            console.print_json(json.dumps(payload))
+            return
+
+        console.print(
+            Panel.fit(
+                f"[bold]{resolved.rel_path}[/] → [cyan]{extracted.heading}[/]",
+                title="Wiki Section",
+            )
+        )
+        if extracted.outbound_links:
+            console.print("[bold]Outbound wikilinks[/]")
+            for link in extracted.outbound_links:
+                console.print(f"  [[{link}]]")
+            console.print()
+        console.print(extracted.content)
+        return
+
+    if as_json:
+        payload = {
+            "path": resolved.rel_path,
+            "headings": [title for _, title in heading_list],
+            "content": text,
+        }
+        console.print_json(json.dumps(payload))
+        return
 
     console.print(Panel.fit(f"[bold]{resolved.rel_path}[/]", title="Wiki Page"))
-    if headings:
+    if heading_list:
         console.print("[bold]Table of contents[/]")
-        for h in headings:
-            console.print(f"  {h}")
+        for level, title in heading_list:
+            indent = "  " * (level - 1)
+            console.print(f"{indent}{'#' * level} {title}")
         console.print()
     console.print(text)
 
@@ -317,7 +373,7 @@ def ingest_status(ctx: click.Context, as_json: bool) -> None:
     table.add_column("Raw file")
     table.add_column("Source page")
 
-    color = {"ingested": "green", "pending": "yellow", "orphan": "red"}
+    color = {"ingested": "green", "pending": "yellow", "orphan": "red", "incomplete": "magenta"}
     for item in statuses:
         table.add_row(
             f"[{color[item.status]}]{item.status}[/]",
@@ -325,6 +381,99 @@ def ingest_status(ctx: click.Context, as_json: bool) -> None:
             item.source_page or "—",
         )
     console.print(table)
+
+
+@main.command()
+@click.argument("page")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
+@click.pass_context
+def backlinks(ctx: click.Context, page: str, as_json: bool) -> None:
+    """List pages that wikilink to the given page."""
+    root = _get_root(ctx)
+    wiki_root = wiki_dir(root)
+    resolved = resolve_page(wiki_root, page)
+    if not resolved:
+        raise click.ClickException(f"Page not found: {page}")
+
+    refs = get_backlinks(wiki_root, page)
+    if as_json:
+        payload = {"page": resolved.rel_path, "backlinks": refs}
+        console.print_json(json.dumps(payload))
+        return
+
+    console.print(f"[bold]Backlinks to {resolved.rel_path}[/]")
+    if not refs:
+        console.print("[yellow]No inbound wikilinks.[/]")
+        return
+    for ref in refs:
+        console.print(ref)
+
+
+@main.command()
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON.")
+@click.pass_context
+def graph(ctx: click.Context, as_json: bool) -> None:
+    """Export the wiki link graph as JSON nodes and edges."""
+    root = _get_root(ctx)
+    payload = export_graph(wiki_dir(root))
+    if as_json:
+        console.print_json(json.dumps(payload))
+        return
+
+    console.print(f"[bold]{len(payload['nodes'])}[/] pages, [bold]{len(payload['edges'])}[/] links")
+    for edge in payload["edges"][:20]:
+        console.print(f"  {edge['from']} → {edge['to']}")
+    if len(payload["edges"]) > 20:
+        console.print(f"  … and {len(payload['edges']) - 20} more (use --json)")
+
+
+@main.command("new")
+@click.option(
+    "--type",
+    "page_type",
+    type=click.Choice(["entity", "concept", "source", "answer"]),
+    required=True,
+)
+@click.option("--slug", required=True, help="Filename slug (e.g. transformer-architecture).")
+@click.option("--title", default=None, help="Page title (defaults from slug).")
+@click.option("--force", is_flag=True, help="Overwrite an existing page.")
+@click.pass_context
+def new_page(
+    ctx: click.Context,
+    page_type: str,
+    slug: str,
+    title: str | None,
+    force: bool,
+) -> None:
+    """Create a new wiki page from templates/."""
+    root = _get_root(ctx)
+    try:
+        result = create_page(
+            root,
+            page_type=page_type,
+            slug=slug,
+            title=title,
+            force=force,
+        )
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    console.print(f"[green]✓[/] Created [bold]{result.rel_path}[/]")
+    console.print("Next: update wiki/index.md and add wikilinks from related pages.")
+
+
+@main.command()
+@click.option("--interval", default=2.0, show_default=True, help="Poll interval in seconds.")
+@click.option("--once", is_flag=True, help="Check once and exit.")
+@click.pass_context
+def watch(ctx: click.Context, interval: float, once: bool) -> None:
+    """Watch raw/ for new files that need ingest."""
+    root = _get_root(ctx)
+    console.print(f"[dim]Watching {root / 'raw'} for pending ingest…[/]")
+    try:
+        watch_raw(root, interval=interval, once=once, on_pending=lambda msg, _: console.print(msg))
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped watching.[/]")
 
 
 @main.command("init-check")

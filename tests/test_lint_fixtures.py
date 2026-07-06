@@ -31,6 +31,32 @@ def test_lint_raw_uningested(tmp_path: Path):
     assert any(i.category == "raw-uningested" for i in report.warnings)
 
 
+def test_lint_broken_markdown_link(tmp_path: Path):
+    wiki_root = tmp_path / "wiki"
+    _write_wiki(tmp_path)
+    (wiki_root / "good-page.md").write_text(
+        (wiki_root / "good-page.md").read_text() + "\nSee [missing](concepts/nope.md).\n"
+    )
+    report = lint_wiki(wiki_root, project_root=tmp_path)
+    assert any(i.category == "broken-markdown-link" for i in report.warnings)
+
+
+def test_lint_ambiguous_link(tmp_path: Path):
+    wiki_root = tmp_path / "wiki"
+    _write_wiki(tmp_path)
+    (wiki_root / "entities").mkdir()
+    (wiki_root / "concepts").mkdir()
+    (wiki_root / "entities" / "hub.md").write_text(
+        "---\ntype: entity\ncreated: 2026-07-04\nupdated: 2026-07-04\n---\n\n# Hub\n"
+    )
+    (wiki_root / "concepts" / "hub.md").write_text(
+        "---\ntype: concept\ncreated: 2026-07-04\nupdated: 2026-07-04\n---\n\n# Hub\n"
+    )
+    (wiki_root / "index.md").write_text("# Index\n\n[[hub]]")
+    report = lint_wiki(wiki_root, project_root=tmp_path)
+    assert any(i.category == "ambiguous-link" for i in report.warnings)
+
+
 def test_lint_ambiguous_slug(tmp_path: Path):
     wiki_root = tmp_path / "wiki"
     _write_wiki(tmp_path)

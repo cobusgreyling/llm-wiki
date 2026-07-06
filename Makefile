@@ -1,4 +1,4 @@
-.PHONY: help demo demo-search demo-lint demo-stats demo-ingest test lint sync-agents walkthrough
+.PHONY: help demo demo-search demo-lint demo-stats demo-ingest test lint sync-agents walkthrough format
 
 ROOT := $(CURDIR)
 DEMO := examples/demo
@@ -38,7 +38,12 @@ test:
 
 lint:
 	ruff check src tests
+	ruff format --check src tests
 	pytest -v
+
+format:
+	ruff format src tests
+	ruff check src tests --fix
 
 sync-agents:
 	python scripts/sync_agents.py

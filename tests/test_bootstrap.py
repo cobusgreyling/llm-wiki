@@ -17,6 +17,8 @@ def test_bootstrap_creates_project_structure(tmp_path: Path):
     assert (target / "raw" / "README.md").exists()
     assert (target / ".cursor" / "mcp.json").exists()
     assert (target / ".mcp.json").exists()
+    assert (target / ".windsurf" / "mcp.json").exists()
+    assert (target / ".opencode" / "mcp.json").exists()
     assert (target / "CLAUDE.md").exists()
     assert "Scaffolded test-wiki" in (target / "wiki" / "log.md").read_text()
 

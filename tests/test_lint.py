@@ -9,13 +9,17 @@ def test_lint_demo_wiki_no_errors():
     assert not report.errors
 
 
+def test_lint_business_wiki_no_errors():
+    business_wiki = Path(__file__).resolve().parents[1] / "examples" / "business" / "wiki"
+    report = lint_wiki(business_wiki, project_root=business_wiki.parent)
+    assert not report.errors
+
+
 def test_lint_index_skips_contradiction_hint():
     demo_wiki = Path(__file__).resolve().parents[1] / "examples" / "demo" / "wiki"
     report = lint_wiki(demo_wiki)
     index_hints = [
-        i
-        for i in report.issues
-        if i.category == "contradiction-hint" and i.page == "index.md"
+        i for i in report.issues if i.category == "contradiction-hint" and i.page == "index.md"
     ]
     assert not index_hints
 

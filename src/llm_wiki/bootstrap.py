@@ -41,10 +41,14 @@ def _scaffold_root() -> Path:
 def _iter_scaffold_files() -> list[tuple[Path, str]]:
     root = _scaffold_root()
     files: list[tuple[Path, str]] = []
+    skip_parts = {"__pycache__"}
     for path in sorted(root.rglob("*")):
-        if path.is_file():
-            rel = path.relative_to(root).as_posix()
-            files.append((path, rel))
+        if not path.is_file():
+            continue
+        if skip_parts.intersection(path.parts) or path.suffix == ".pyc":
+            continue
+        rel = path.relative_to(root).as_posix()
+        files.append((path, rel))
     return files
 
 
@@ -100,15 +104,20 @@ def bootstrap_wiki(
         created.append(rel)
 
     git_initialized = False
-    if init_git and shutil.which("git"):
-        if not (target / ".git").exists():
-            subprocess.run(
-                ["git", "init"],
-                cwd=target,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            git_initialized = True
+    if init_git:
+        if not shutil.which("git"):
+            pass
+        elif not (target / ".git").exists():
+            try:
+                subprocess.run(
+                    ["git", "init"],
+                    cwd=target,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                git_initialized = True
+            except subprocess.CalledProcessError:
+                git_initialized = False
 
     return BootstrapResult(target=target, files_created=created, git_initialized=git_initialized)

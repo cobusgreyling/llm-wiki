@@ -44,6 +44,12 @@ Classic RAG retrieves fragments at query time. Nothing accumulates. Ask a questi
 
 ## See it in action
 
+**Terminal demo** — CLI search, ingest status, lint, and expand in ~30 seconds:
+
+[![asciicast](https://asciinema.org/a/JaIKgBIXHP8nDyw0.svg)](https://asciinema.org/a/JaIKgBIXHP8nDyw0)
+
+Play locally: `asciinema play assets/demo.cast` (after `pip install asciinema`)
+
 **Ingest flow** — one source update touches the whole wiki:
 
 ![Ingest workflow](assets/ingest-flow.svg)
@@ -146,6 +152,7 @@ my-wiki/                  # your project (from wiki init)
 | [`examples/demo/`](examples/demo/) | Karpathy gist + qmd (with contradiction) |
 | [`examples/research/`](examples/research/) | NLP paper notes |
 | [`examples/reading/`](examples/reading/) | Book chapter notes |
+| [`examples/business/`](examples/business/) | Meeting notes + customer calls |
 
 ## Operations
 
@@ -165,10 +172,17 @@ wiki search "transformer architecture"       # BM25 (default)
 wiki search "auth flow" --backend qmd        # optional: requires qmd collection
 wiki list --type concept                   # browse pages by type
 wiki lint                                  # health check (exits 1 on errors)
+wiki lint --severity error --category broken-link
 wiki lint --json                           # machine-readable lint output
 wiki stats                                 # page counts
 wiki log                                   # recent operations
 wiki expand synthesis                      # read a page + TOC
+wiki expand synthesis --section "Thesis"   # one section only (saves tokens)
+wiki backlinks synthesis                 # inbound wikilinks
+wiki graph --json                          # export link graph
+wiki new --type concept --slug my-topic    # scaffold from templates/
+wiki watch                                 # notify when raw/ needs ingest
+./scripts/ingest-checklist.sh .            # post-ingest helper
 ```
 
 Set `LLM_WIKI_ROOT` when running the MCP server or CLI from outside the project directory.
@@ -188,7 +202,9 @@ The wiki pages remain the source of truth; qmd improves recall.
 
 ## MCP server
 
-Tools: `wiki_search`, `wiki_expand`, `wiki_list`, `wiki_lint`, `wiki_stats`, `wiki_ingest_status`, `wiki_recent_log`
+Tools: `wiki_search`, `wiki_expand` (optional `section`), `wiki_list`, `wiki_lint` (optional `severity`/`category`), `wiki_stats`, `wiki_ingest_status`, `wiki_recent_log`, `wiki_backlinks`, `wiki_graph`, `wiki_new`
+
+See [docs/MCP.md](docs/MCP.md), [docs/LINT.md](docs/LINT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/OBSIDIAN.md](docs/OBSIDIAN.md).
 
 ```bash
 pip install "llm-wiki[mcp]"
@@ -199,7 +215,7 @@ python -m llm_wiki.mcp_server
 
 - **Research** — papers and articles over weeks, building an evolving thesis → see [`examples/research/`](examples/research/)
 - **Reading** — chapter-by-chapter book notes with character/theme pages → see [`examples/reading/`](examples/reading/)
-- **Business** — meeting transcripts, Slack threads, project docs
+- **Business** — meeting transcripts, Slack threads, project docs → see [`examples/business/`](examples/business/)
 - **Personal** — health, goals, journal entries, podcast notes
 - **Due diligence** — competitive analysis that compounds
 
@@ -210,6 +226,19 @@ python -m llm_wiki.mcp_server
 - **Dataview** — query YAML frontmatter for dynamic tables
 - **Marp** — generate slide decks from wiki content
 
+## Community & examples
+
+Fork the [template](https://github.com/cobusgreyling/llm-wiki/generate) and open a PR to add your wiki to this list.
+
+| Wiki | Domain | Link |
+|------|--------|------|
+| Demo | Karpathy gist + qmd | [`examples/demo/`](examples/demo/) |
+| Research | NLP papers | [`examples/research/`](examples/research/) |
+| Reading | Book notes | [`examples/reading/`](examples/reading/) |
+| Business | Meetings + calls | [`examples/business/`](examples/business/) |
+
+Agent configs ship for **Cursor**, **Claude Code**, **Windsurf**, and **OpenCode** after `wiki init`.
+
 ## Related work
 
 - [Karpathy's LLM Wiki gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the original pattern
@@ -218,7 +247,7 @@ python -m llm_wiki.mcp_server
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues welcome — check the issue templates.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues: [#1](https://github.com/cobusgreyling/llm-wiki/issues/1)–[#5](https://github.com/cobusgreyling/llm-wiki/issues/5).
 
 Maintainers: see [MAINTAINERS.md](MAINTAINERS.md) for release and PyPI publishing.
 

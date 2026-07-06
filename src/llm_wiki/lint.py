@@ -12,10 +12,13 @@ from .links import (
     WIKILINK_RE,
     WikiPage,
     build_slug_index,
+    extract_markdown_links,
     extract_wikilinks,
     inbound_links,
+    is_ambiguous_link,
     iter_wiki_pages,
     resolve_link,
+    resolve_page,
 )
 from .paths import raw_dir
 
@@ -26,6 +29,8 @@ CONTRADICTION_MARKERS = re.compile(
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 VALID_TYPES = {"entity", "concept", "source", "answer", "synthesis", "meta"}
 FRONTMATTER_EXEMPT = {"index", "log"}
+CONTRADICTION_LEDGER_EXEMPT = {"index", "log", "synthesis", "contradictions"}
+CONTRADICTION_LEDGER_PREFIXES = ("sources/", "entities/", "answers/")
 
 
 @dataclass
@@ -51,6 +56,20 @@ class LintReport:
     @property
     def infos(self) -> list[LintIssue]:
         return [i for i in self.issues if i.severity == "info"]
+
+
+def filter_issues(
+    issues: list[LintIssue],
+    *,
+    severity: str | None = None,
+    category: str | None = None,
+) -> list[LintIssue]:
+    filtered = issues
+    if severity and severity != "all":
+        filtered = [i for i in filtered if i.severity == severity]
+    if category:
+        filtered = [i for i in filtered if i.category == category]
+    return filtered
 
 
 def parse_frontmatter(text: str) -> dict | None:
@@ -104,6 +123,130 @@ def lint_frontmatter(page: WikiPage, text: str, report: LintReport) -> None:
         report.issues.append(
             LintIssue("warning", "frontmatter", page.rel_path, "Frontmatter missing `created` date")
         )
+
+
+def _normalize_source_ref(ref: str) -> str:
+    cleaned = ref.strip().lower().removesuffix(".md")
+    if not cleaned.startswith("sources/"):
+        cleaned = f"sources/{cleaned}"
+    return cleaned
+
+
+def lint_source_frontmatter(page: WikiPage, meta: dict | None, report: LintReport) -> None:
+    if not page.rel_path.startswith("sources/"):
+        return
+    if meta is None or not meta.get("raw_file"):
+        report.issues.append(
+            LintIssue(
+                "error",
+                "source-missing-raw-file",
+                page.rel_path,
+                "Source page must include `raw_file` in YAML frontmatter",
+            )
+        )
+
+
+def lint_frontmatter_source_refs(
+    page: WikiPage,
+    meta: dict | None,
+    slug_index: dict[str, list[WikiPage]],
+    report: LintReport,
+) -> None:
+    if meta is None:
+        return
+    refs = meta.get("sources")
+    if refs is None:
+        return
+    if not isinstance(refs, list):
+        report.issues.append(
+            LintIssue(
+                "warning",
+                "invalid-source-ref",
+                page.rel_path,
+                "Frontmatter `sources` must be a YAML list of source page paths",
+            )
+        )
+        return
+    for ref in refs:
+        if not isinstance(ref, str):
+            report.issues.append(
+                LintIssue(
+                    "warning",
+                    "invalid-source-ref",
+                    page.rel_path,
+                    f"Frontmatter `sources` entry must be a string, got {type(ref).__name__}",
+                )
+            )
+            continue
+        normalized = _normalize_source_ref(ref)
+        if resolve_link(normalized, slug_index) is None:
+            report.issues.append(
+                LintIssue(
+                    "warning",
+                    "invalid-source-ref",
+                    page.rel_path,
+                    f"Frontmatter `sources` references missing page: {ref!r}",
+                )
+            )
+
+
+def _page_in_contradictions_ledger(page: WikiPage, ledger_text: str) -> bool:
+    lowered = ledger_text.lower()
+    checks = {
+        page.rel_path.lower(),
+        page.rel_path.removesuffix(".md").lower(),
+        page.stem.lower(),
+        f"[[{page.stem}]]".lower(),
+        f"[[{page.rel_path.removesuffix('.md')}]]".lower(),
+    }
+    return any(token in lowered for token in checks)
+
+
+def lint_contradiction_ledger(
+    page: WikiPage,
+    prose: str,
+    contradictions_text: str | None,
+    report: LintReport,
+) -> None:
+    if contradictions_text is None:
+        return
+    if page.stem in CONTRADICTION_LEDGER_EXEMPT:
+        return
+    if not page.rel_path.startswith(CONTRADICTION_LEDGER_PREFIXES):
+        return
+    if not CONTRADICTION_MARKERS.search(prose):
+        return
+    if _page_in_contradictions_ledger(page, contradictions_text):
+        return
+    report.issues.append(
+        LintIssue(
+            "warning",
+            "contradiction-unfiled",
+            page.rel_path,
+            "Contains contradiction/staleness language but is not referenced in contradictions.md",
+        )
+    )
+
+
+def lint_markdown_links(page: WikiPage, text: str, wiki_root: Path, report: LintReport) -> None:
+    for href in extract_markdown_links(text):
+        if href.startswith(("#", "http://", "https://", "mailto:")):
+            continue
+        target = href.split("#", 1)[0].strip()
+        if not target:
+            continue
+        if target.startswith("wiki/"):
+            target = target.removeprefix("wiki/")
+        resolved = resolve_page(wiki_root, target)
+        if resolved is None:
+            report.issues.append(
+                LintIssue(
+                    "warning",
+                    "broken-markdown-link",
+                    page.rel_path,
+                    f"Unresolved markdown link: ({href})",
+                )
+            )
 
 
 def lint_ambiguous_slugs(slug_index: dict[str, list[WikiPage]], report: LintReport) -> None:
@@ -179,6 +322,13 @@ def lint_wiki(wiki_root: Path, *, project_root: Path | None = None) -> LintRepor
 
     lint_ambiguous_slugs(slug_index, report)
 
+    contradictions_path = wiki_root / "contradictions.md"
+    contradictions_text = (
+        contradictions_path.read_text(encoding="utf-8", errors="replace")
+        if contradictions_path.exists()
+        else None
+    )
+
     # Required files
     for required in ("index.md", "log.md", "synthesis.md"):
         if not (wiki_root / required).exists():
@@ -190,11 +340,23 @@ def lint_wiki(wiki_root: Path, *, project_root: Path | None = None) -> LintRepor
         text = page.path.read_text(encoding="utf-8", errors="replace")
         links = extract_wikilinks(text)
 
+        meta = parse_frontmatter(text)
         lint_frontmatter(page, text, report)
+        lint_source_frontmatter(page, meta, report)
+        lint_frontmatter_source_refs(page, meta, slug_index, report)
 
-        # Broken wikilinks
+        # Wikilink resolution
         for target in links:
-            if resolve_link(target, slug_index) is None:
+            if is_ambiguous_link(target, slug_index):
+                report.issues.append(
+                    LintIssue(
+                        "warning",
+                        "ambiguous-link",
+                        page.rel_path,
+                        f"Ambiguous wikilink: [[{target}]] resolves to multiple pages",
+                    )
+                )
+            elif resolve_link(target, slug_index) is None:
                 report.issues.append(
                     LintIssue(
                         "error",
@@ -203,6 +365,8 @@ def lint_wiki(wiki_root: Path, *, project_root: Path | None = None) -> LintRepor
                         f"Unresolved wikilink: [[{target}]]",
                     )
                 )
+
+        lint_markdown_links(page, text, wiki_root, report)
 
         # Orphan pages (no inbound links), excluding index/log
         if page.stem not in ("index", "log") and not inbound.get(page.rel_path):
@@ -222,9 +386,12 @@ def lint_wiki(wiki_root: Path, *, project_root: Path | None = None) -> LintRepor
                 continue
             mentioned_terms.setdefault(term, set()).add(page.rel_path)
 
-        # Stale / contradiction language without contradictions ledger update
         prose = WIKILINK_RE.sub(" ", text)
-        if CONTRADICTION_MARKERS.search(prose) and page.stem not in ("contradictions", "index"):
+        if (
+            CONTRADICTION_MARKERS.search(prose)
+            and page.stem not in ("contradictions", "index")
+            and not page.rel_path.startswith(CONTRADICTION_LEDGER_PREFIXES)
+        ):
             report.issues.append(
                 LintIssue(
                     "info",
@@ -234,6 +401,7 @@ def lint_wiki(wiki_root: Path, *, project_root: Path | None = None) -> LintRepor
                     "verify contradictions.md is updated",
                 )
             )
+        lint_contradiction_ledger(page, prose, contradictions_text, report)
 
     for term, pages_with_term in sorted(mentioned_terms.items()):
         if len(pages_with_term) < 2:

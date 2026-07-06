@@ -18,6 +18,7 @@ HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
 
 TITLE_BOOST = 3.0
 HEADING_BOOST = 1.5
+VALID_BACKENDS = frozenset({"bm25", "qmd"})
 
 
 @dataclass
@@ -206,8 +207,9 @@ def search_wiki_with_backend(
     backend: str = "bm25",
     include_index: bool = True,
 ) -> list[SearchResult]:
+    if backend not in VALID_BACKENDS:
+        valid = ", ".join(sorted(VALID_BACKENDS))
+        raise ValueError(f"Unknown search backend: {backend!r}. Valid backends: {valid}")
     if backend == "bm25":
         return search_wiki(wiki_root, query, limit=limit, include_index=include_index)
-    if backend == "qmd":
-        return search_wiki_qmd(wiki_root, query, limit=limit)
-    raise ValueError(f"Unknown search backend: {backend!r}")
+    return search_wiki_qmd(wiki_root, query, limit=limit)

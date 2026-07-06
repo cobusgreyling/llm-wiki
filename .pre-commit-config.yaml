@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: sync-agents
+        name: sync AGENTS.md copies
+        entry: python scripts/sync_agents.py
+        language: system
+        files: ^AGENTS\.md$
+        pass_filenames: false

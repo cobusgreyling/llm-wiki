@@ -75,7 +75,7 @@ Triggered when the human asks a question.
 
 1. **Read** `wiki/index.md` first to locate relevant pages.
 2. **Search** with `wiki search "<query>"` or the `wiki_search` MCP tool if available.
-3. **Read** the most relevant pages (use `wiki expand <page>` to load selectively).
+3. **Read** the most relevant pages (use `wiki expand <page> --section "Heading"` to load one section at a time).
 4. **Synthesize** an answer with wikilinks and citations to source pages.
 5. **Offer** to file the answer: valuable analyses should become `wiki/answers/<slug>.md`.
 6. **Append** to log if an answer page was filed:
@@ -149,25 +149,34 @@ wiki search "query"            # BM25 search (default; title/header boosted)
 wiki search "query" --backend qmd   # optional: qmd when collection is configured
 wiki list --type concept       # browse pages by type
 wiki lint                      # health check (exits 1 on errors)
+wiki lint --severity error     # errors only
+wiki lint --category broken-link   # filter by lint category
 wiki lint --json               # machine-readable lint output
 wiki stats                     # page counts
 wiki log                       # recent operations
 wiki expand <page>             # read a page + TOC
+wiki expand <page> --section "Heading"  # one section only (saves tokens)
+wiki backlinks <page>          # inbound wikilinks
+wiki graph --json              # export link graph
+wiki new --type concept --slug my-topic   # scaffold from templates/
+wiki watch                     # notify when raw/ has pending ingest
 wiki init-check                # verify project structure
 ```
 
 Set `LLM_WIKI_ROOT` to the project root when the CLI or MCP server runs outside this directory.
 
-Install: `pip install -e .` from the project root.
+Install: `pip install "llm-wiki[mcp]"` (or `pip install -e ".[mcp]"` when developing this repo).
 
 ## MCP server
 
 For native agent tool access:
 
 ```bash
-pip install -e ".[mcp]"
+pip install "llm-wiki[mcp]"
 python -m llm_wiki.mcp_server
 ```
+
+Tools: `wiki_search`, `wiki_expand`, `wiki_lint`, `wiki_list`, `wiki_stats`, `wiki_ingest_status`, `wiki_recent_log`, `wiki_backlinks`, `wiki_graph`, `wiki_new`. See `docs/MCP.md`.
 
 Add to your agent config (Cursor, Claude Code, etc.):
 
